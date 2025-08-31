@@ -1,17 +1,18 @@
 const express=require("express")
 const cors=require("cors");
-
-const app=express();
-app.use(express.json());
-
-app.use(cors());
-
 const http=require("http");
 const {Server}=require("socket.io");
+const {handleSocketConnection}=require("./socketHandlers");
+
+
+const app=express();
 
 const server=http.createServer(app);
 // http.createServer(app) → creates an HTTP server and attaches your app to it.
 
+app.use(express.json());
+
+app.use(cors());
 
 const io=new Server(server,{//attaches Socket.io to the server.
     cors:{
