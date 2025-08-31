@@ -29,16 +29,17 @@ app.get('/',(req,res)=>{
     res.send("Hello World");
 });
 
-app.use('/api/locations', (req, res) => {
-    res.send("Locations API");
-});
+// app.use('/api/locations', (req, res) => {
+//     res.send("Locations API");
+// });
 
 
 io.on("connection",(socket)=>{//Listens for new clients connecting to your Socket.io server.
-    console.log(`User connected: ${socket.id}`);//Each client (frontend) that connects gets a unique socket.id.
+    console.log(`User connected: ${socket?.id}`);//Each client (frontend) that connects gets a unique socket.id.
 
-    socket.on('disconnect',()=>{
-        console.log('User Disconnected:',socket.id);
+    handleSocketConnection(socket,io);
+    socket.on('disconnect',() => {
+        console.log('User Disconnected:',socket?.id);
     })
 });
 
