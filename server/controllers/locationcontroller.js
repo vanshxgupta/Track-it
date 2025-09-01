@@ -8,8 +8,8 @@ exports.calculateDistanceAndETA = async (origin, destination, mode = 'car') => {
     // profile select car/walk ke liye
     let profile;
     if (mode === 'car') profile = 'driving-car';
-    else if (mode === 'walk' || mode === 'walking') profile = 'foot-walking';
-    else throw new Error("Invalid mode! Use 'car' or 'walking'.");
+    else if (mode === 'walk') profile = 'foot-walking';
+    else throw new Error("Invalid mode! Use 'car' or 'walk'.");
 
     // API endpoint
     const url = `https://api.openrouteservice.org/v2/matrix/${profile}`;
@@ -24,7 +24,7 @@ exports.calculateDistanceAndETA = async (origin, destination, mode = 'car') => {
             units: 'km'                                 // distance km me
         }, {
             headers: {
-                Authorization: apikey,                  // API key
+                'Authorization': apikey,                  // API key
                 'Content-Type': 'application/json'
             }
         });
@@ -43,3 +43,40 @@ exports.calculateDistanceAndETA = async (origin, destination, mode = 'car') => {
         throw error;
     }
 };
+
+
+exports.getRoute = async (req, res) => {
+    const { start, end, mode } = req.body;
+    const apikey = process.env.ORS_api_key;
+
+    let profile;
+    if (mode === 'car') profile = 'driving-car';
+    else if (mode === 'walk') profile = 'foot-walking';
+    else return res.status(400).json({ error: "Invalid mode! Use 'car' or 'walk'." });
+
+    // Correct Directions API
+    const url = `https://api.openrouteservice.org/v2/directions/${profile}/geojson`;
+
+    try {
+        const response = await axios.post(url, {
+            coordinates: [
+                [start.lng, start.lat],
+                [end.lng, end.lat]
+            ]
+        }, {
+            headers: {
+                'Authorization': apikey,
+                'Content-Type': 'application/json'
+            }
+        });
+
+        res.json({
+            route: response.data, // full geojson route
+        });
+
+    } catch (error) {
+        console.error('Error getting route:', error.response?.data || error.message);
+        res.status(500).json({ error: 'Failed to get route' });
+    }
+};
+
