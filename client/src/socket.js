@@ -11,8 +11,9 @@ export const emitLocationUpdate=(data)=>{//Frontend apna location data backend k
 }
 
 export const listenforUsersUpdates=(callback)=>{//Frontend backend ke events sunega (jaise koi user offline hua).
-    socket.on('user-offline',(callback)=>{
-    })
+    socket.on("user-offline", (data) => {
+        callback(data); 
+    });
 }
 
 export default socket;
