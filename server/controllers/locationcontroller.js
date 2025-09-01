@@ -18,7 +18,7 @@ exports.calculateDistanceAndETA = async (origin, destination, mode = 'car') => {
         const response = await axios.post(url, {
             locations: [
                 [origin.lng, origin.lat],                // origin
-                [destination.lng, destination.lat]       // destination
+                [destinatison.lng, destination.lat]       // destination
             ],
             metrics: ['distance', 'duration'],          // kya chahiye
             units: 'km'                                 // distance km me

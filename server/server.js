@@ -34,8 +34,7 @@ app.use('/api/locations', locationRoute);
 
 
 io.on("connection",(socket)=>{//Listens for new clients connecting to your Socket.io server.
-    console.log(`User connected: ${socket?.id}`);//Each client (frontend) that connects gets a unique socket.id.
-
+    
     handleSocketConnection(socket,io);
     socket.on('disconnect',() => {
         console.log('User Disconnected:',socket?.id);
