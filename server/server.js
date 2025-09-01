@@ -3,7 +3,7 @@ const cors=require("cors");
 const http=require("http");
 const {Server}=require("socket.io");
 const {handleSocketConnection}=require("./socketHandlers");
-
+const locationRoute=require('./routes/locationRoute')
 
 const app=express();
 
@@ -22,17 +22,15 @@ const io=new Server(server,{//attaches Socket.io to the server.
     }
 });
 
-
+ 
 const PORT=process.env.PORT || 4000;
 
 
 app.get('/',(req,res)=>{
-    res.send("Hello World");
+    res.send("Hello from server");
 });
 
-// app.use('/api/locations', (req, res) => {
-//     res.send("Locations API");
-// });
+app.use('/api/locations', locationRoute);
 
 
 io.on("connection",(socket)=>{//Listens for new clients connecting to your Socket.io server.
