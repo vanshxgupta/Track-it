@@ -4,6 +4,8 @@ const http=require("http");
 const {Server}=require("socket.io");
 const {handleSocketConnection}=require("./socketHandlers");
 const locationRoute=require('./routes/locationRoute')
+const dotenv=require("dotenv");
+dotenv.config();
 
 const app=express();
 
