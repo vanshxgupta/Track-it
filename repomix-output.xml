@@ -1,0 +1,1327 @@
+This file is a merged representation of the entire codebase, combined into a single document by Repomix.
+
+<file_summary>
+This section contains a summary of this file.
+
+<purpose>
+This file contains a packed representation of the entire repository's contents.
+It is designed to be easily consumable by AI systems for analysis, code review,
+or other automated processes.
+</purpose>
+
+<file_format>
+The content is organized as follows:
+1. This summary section
+2. Repository information
+3. Directory structure
+4. Repository files (if enabled)
+5. Multiple file entries, each consisting of:
+  - File path as an attribute
+  - Full contents of the file
+</file_format>
+
+<usage_guidelines>
+- This file should be treated as read-only. Any changes should be made to the
+  original repository files, not this packed version.
+- When processing this file, use the file path to distinguish
+  between different files in the repository.
+- Be aware that this file may contain sensitive information. Handle it with
+  the same level of security as you would the original repository.
+</usage_guidelines>
+
+<notes>
+- Some files may have been excluded based on .gitignore rules and Repomix's configuration
+- Binary files are not included in this packed representation. Please refer to the Repository Structure section for a complete list of file paths, including binary files
+- Files matching patterns in .gitignore are excluded
+- Files matching default ignore patterns are excluded
+- Files are sorted by Git change count (files with more changes are at the bottom)
+</notes>
+
+</file_summary>
+
+<directory_structure>
+client/.gitignore
+client/eslint.config.js
+client/index.html
+client/package.json
+client/public/vite.svg
+client/README.md
+client/src/App.jsx
+client/src/assets/Delivery.json
+client/src/assets/react.svg
+client/src/components/Map.jsx
+client/src/components/Sidebar.jsx
+client/src/components/UserCard.jsx
+client/src/index.css
+client/src/main.jsx
+client/src/socket.js
+client/vite.config.js
+server/.gitignore
+server/controllers/locationcontroller.js
+server/models/User.js
+server/package.json
+server/routes/locationRoute.js
+server/server.js
+server/socketHandlers.js
+</directory_structure>
+
+<files>
+This section contains the contents of the repository's files.
+
+<file path="client/src/components/Map.jsx">
+import React, { useEffect, useState } from "react";
+import {
+  MapContainer,
+  TileLayer,
+  Marker,
+  Popup,
+  Polyline,
+  useMap,
+} from "react-leaflet";
+import L from "leaflet";
+import "leaflet/dist/leaflet.css";
+
+import mypin from "../assets/mypin.png"
+
+const Map = ({ users, mySocketId, route, selectedUser, selectedUserId }) => {
+  const [currentLocation, setCurrentLocation] = useState(null);
+  const [theme, setTheme] = useState("streets"); 
+
+  
+  const themes = {
+    streets: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+    dark: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+    light: "https://tiles.stadiamaps.com/tiles/alidade_smooth/{z}/{x}/{y}{r}.png",
+    satellite:
+      "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+  };
+
+  useEffect(() => {
+    navigator.geolocation.getCurrentPosition((position) => {
+      const { latitude, longitude } = position.coords;
+      setCurrentLocation([latitude, longitude]);
+    });
+  }, []);
+
+  function FitBounds({ me, selectedUser }) {
+    const map = useMap();
+    useEffect(() => {
+      if (
+        me &&
+        selectedUser &&
+        me.lat &&
+        me.lng &&
+        selectedUser.lat &&
+        selectedUser.lng
+      ) {
+        const bounds = L.latLngBounds([
+          [me.lat, me.lng],
+          [selectedUser.lat, selectedUser.lng],
+        ]);
+        map.fitBounds(bounds, { padding: [80, 80] });
+      } else if (me && me.lat && me.lng) {
+        map.setView([me.lat, me.lng], 17);
+      }
+    }, [me, selectedUser, map]);
+    return null;
+  }
+
+  // ✅ Always treat users as an array
+  const usersArray = Array.isArray(users) ? users : Object.values(users || {});
+
+  // Find yourself
+  const me = usersArray.find((u) => u.userId === mySocketId);
+
+  // Extract polyline coordinates from GeoJSON
+  let polylineCoords = [];
+  if (route?.features?.[0]) {
+    polylineCoords = route.features[0].geometry.coordinates.map(
+      ([lng, lat]) => [lat, lng]
+    );
+  }
+
+  return (
+    <div className="relative w-full h-full">
+      {/* Theme Selector Dropdown */}
+      <div className="absolute top-4 left-4 z-[1000] bg-white rounded shadow p-2">
+        <select
+          value={theme}
+          onChange={(e) => setTheme(e.target.value)}
+          className="p-1 border rounded text-sm"
+        >
+          <option value="streets">Streets</option>
+          <option value="light">Light</option>
+          <option value="dark">Dark</option>
+          <option value="satellite">Satellite</option>
+        </select>
+      </div>
+
+      <MapContainer
+        center={currentLocation || [51.505, -0.09]}
+        zoom={18}
+        style={{ height: "100vh", width: "100%" }}
+        className="shadow-lg"
+      >
+        <FitBounds me={me} selectedUser={selectedUser} />
+
+        {/* Dynamic Map Theme */}
+        <TileLayer attribution="slrTech" url={themes[theme]} />
+
+        {/* Your marker */}
+        {me?.lat && me?.lng && (
+          <Marker
+            position={[me.lat, me.lng]}
+            icon={new L.Icon({ iconUrl:mypin, iconSize: [70, 70] })}
+          >
+            <Popup>You are here</Popup>
+          </Marker>
+        )}
+
+        {/* Other users */}
+        {usersArray
+          .filter((user) => user.userId !== mySocketId)
+          .map(
+            (user) =>
+              user.lat &&
+              user.lng && (
+                <Marker
+                  key={user.userId}
+                  position={[user.lat, user.lng]}
+                  icon={
+                    selectedUserId === user.userId
+                      ? new L.Icon({
+                          iconUrl: "/mypin.png",
+                          iconSize: [60, 80],
+                          className: "border-4 border-yellow-500",
+                        })
+                      : new L.Icon({ iconUrl: "/mypin.png", iconSize: [50, 70] })
+                  }
+                >
+                  <Popup>
+                    <span
+                      className={
+                        selectedUserId === user.userId
+                          ? "font-bold text-green-600"
+                          : ""
+                      }
+                    >
+                      User: {user.userId}
+                    </span>
+                    <br />
+                    Distance: {user.distance ?? "N/A"} km <br />
+                    ETA: {user.eta ?? "N/A"} min
+                  </Popup>
+                </Marker>
+              )
+          )}
+
+        {/* Route polyline */}
+        {polylineCoords.length > 0 && (
+          <Polyline
+            positions={polylineCoords}
+            color="#F9A825"
+            weight={6}
+            opacity={0.8}
+          />
+        )}
+      </MapContainer>
+    </div>
+  );
+};
+
+export default Map;
+</file>
+
+<file path="client/src/components/Sidebar.jsx">
+import React from 'react';
+import UserCard from './UserCard';
+
+const Sidebar = ({ users, onSelectUser, selectedUserId, isOpen, setIsOpen, windowWidth, mySocketId }) => {
+    // User selection closes sidebar on mobile
+    const handleUserSelect = (user) => {
+        if (user.userId !== mySocketId) { // ✅ Prevent selecting yourself
+            onSelectUser(user);
+            if (windowWidth < 768) setIsOpen(false);
+        }
+    };
+
+    // Close button
+    const handleClose = () => setIsOpen(false);
+
+    // Convert users object to array
+    const usersArray = Object.values(users || {});
+
+    return (
+        <>
+            {/* Sidebar */}
+            <div
+                className={`
+                    fixed top-0 left-0 z-40 h-full w-4/5 max-w-xs md:static md:z-10 md:w-80
+                    transition-transform duration-300 ease-in-out
+                    ${isOpen ? 'translate-x-0' : '-translate-x-full'}
+                    bg-gradient-to-b from-white via-blue-50 to-blue-100
+                    shadow-2xl md:shadow-md border-r border-gray-200
+                    p-5 rounded-r-2xl md:rounded-none flex flex-col
+                `}
+                style={{ height: '100vh' }}
+            >
+                {/* Header with close button on mobile */}
+                <div className="flex justify-between items-center mb-6">
+                    <h2 className="text-2xl font-extrabold bg-gradient-to-r from-green-600 to-blue-600 bg-clip-text text-transparent drop-shadow-sm">
+                        Active Users
+                    </h2>
+                    {windowWidth < 768 && (
+                        <button
+                            className="md:hidden bg-red-500 hover:bg-red-600 text-white rounded-full p-2 shadow-lg transition-transform transform hover:rotate-90"
+                            onClick={handleClose}
+                            aria-label="Close sidebar"
+                        >
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                        </button>
+                    )}
+                </div>
+
+                {/* User list */}
+                <div className="flex-1 overflow-y-auto space-y-4 pr-1 custom-scrollbar">
+                    {usersArray.map((user, idx) => (
+                        <div
+                            key={user.userId || user._id || idx} // ✅ safe key
+                            onClick={() => handleUserSelect(user)}
+                            className={`
+                                ${user.userId === mySocketId ? "hidden" : ""} 
+                                ${selectedUserId === user.userId
+                                    ? "bg-gradient-to-r from-green-100 to-blue-100 ring-2 ring-green-600 scale-[1.02]"
+                                    : "hover:bg-white hover:shadow-lg"}
+                                rounded-2xl transition-all duration-200 shadow-sm cursor-pointer
+                            `}
+                        >
+                            <UserCard user={user} />
+                        </div>
+                    ))}
+                </div>
+            </div>
+
+            {/* Overlay for mobile */}
+            {isOpen && windowWidth < 768 && (
+                <div
+                    className="fixed inset-0 bg-black bg-opacity-40 z-30 md:hidden"
+                    onClick={handleClose}
+                />
+            )}
+
+            {/* Custom scrollbar styles */}
+          
+            <style>{`
+                .custom-scrollbar::-webkit-scrollbar {
+                    width: 6px;
+                }
+                .custom-scrollbar::-webkit-scrollbar-track {
+                    background: transparent;
+                }
+                .custom-scrollbar::-webkit-scrollbar-thumb {
+                    background: linear-gradient(to bottom, #16a34a, #2563eb);
+                    border-radius: 9999px;
+                }
+            `}</style>
+
+        </>
+    );
+};
+
+export default Sidebar;
+</file>
+
+<file path="client/src/components/UserCard.jsx">
+import React from 'react';
+
+const UserCard = ({ user }) => (
+    <div className='p-3 bg-green-500 rounded-2xl'>
+        <h2 className="text-md font-semibold mb-1 truncate">User: {user.userId.slice(0, 15)}...</h2>
+        <div>
+            {user.distance && (
+                <div className="text-xs text-gray-600">
+                    {user.distance} • {user.eta}
+                </div>
+            )}
+        </div>
+    </div>
+);
+
+export default UserCard;
+</file>
+
+<file path="client/.gitignore">
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+*.local
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+
+.env
+</file>
+
+<file path="client/eslint.config.js">
+import js from '@eslint/js'
+import globals from 'globals'
+import reactHooks from 'eslint-plugin-react-hooks'
+import reactRefresh from 'eslint-plugin-react-refresh'
+import { defineConfig, globalIgnores } from 'eslint/config'
+
+export default defineConfig([
+  globalIgnores(['dist']),
+  {
+    files: ['**/*.{js,jsx}'],
+    extends: [
+      js.configs.recommended,
+      reactHooks.configs['recommended-latest'],
+      reactRefresh.configs.vite,
+    ],
+    languageOptions: {
+      ecmaVersion: 2020,
+      globals: globals.browser,
+      parserOptions: {
+        ecmaVersion: 'latest',
+        ecmaFeatures: { jsx: true },
+        sourceType: 'module',
+      },
+    },
+    rules: {
+      'no-unused-vars': ['error', { varsIgnorePattern: '^[A-Z_]' }],
+    },
+  },
+])
+</file>
+
+<file path="client/index.html">
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Vite + React</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>
+</file>
+
+<file path="client/public/vite.svg">
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" aria-hidden="true" role="img" class="iconify iconify--logos" width="31.88" height="32" preserveAspectRatio="xMidYMid meet" viewBox="0 0 256 257"><defs><linearGradient id="IconifyId1813088fe1fbc01fb466" x1="-.828%" x2="57.636%" y1="7.652%" y2="78.411%"><stop offset="0%" stop-color="#41D1FF"></stop><stop offset="100%" stop-color="#BD34FE"></stop></linearGradient><linearGradient id="IconifyId1813088fe1fbc01fb467" x1="43.376%" x2="50.316%" y1="2.242%" y2="89.03%"><stop offset="0%" stop-color="#FFEA83"></stop><stop offset="8.333%" stop-color="#FFDD35"></stop><stop offset="100%" stop-color="#FFA800"></stop></linearGradient></defs><path fill="url(#IconifyId1813088fe1fbc01fb466)" d="M255.153 37.938L134.897 252.976c-2.483 4.44-8.862 4.466-11.382.048L.875 37.958c-2.746-4.814 1.371-10.646 6.827-9.67l120.385 21.517a6.537 6.537 0 0 0 2.322-.004l117.867-21.483c5.438-.991 9.574 4.796 6.877 9.62Z"></path><path fill="url(#IconifyId1813088fe1fbc01fb467)" d="M185.432.063L96.44 17.501a3.268 3.268 0 0 0-2.634 3.014l-5.474 92.456a3.268 3.268 0 0 0 3.997 3.378l24.777-5.718c2.318-.535 4.413 1.507 3.936 3.838l-7.361 36.047c-.495 2.426 1.782 4.5 4.151 3.78l15.304-4.649c2.372-.72 4.652 1.36 4.15 3.788l-11.698 56.621c-.732 3.542 3.979 5.473 5.943 2.437l1.313-2.028l72.516-144.72c1.215-2.423-.88-5.186-3.54-4.672l-25.505 4.922c-2.396.462-4.435-1.77-3.759-4.114l16.646-57.705c.677-2.35-1.37-4.583-3.769-4.113Z"></path></svg>
+</file>
+
+<file path="client/README.md">
+# React + Vite
+
+This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+
+Currently, two official plugins are available:
+
+- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) for Fast Refresh
+- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+
+## Expanding the ESLint configuration
+
+If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+</file>
+
+<file path="client/src/assets/Delivery.json">
+{"v":"5.5.9","fr":60,"ip":0,"op":241,"w":300,"h":300,"nm":"Delivery boy on the way","ddd":0,"assets":[{"id":"comp_0","layers":[{"ddd":0,"ind":1,"ty":4,"nm":"Layer 3","sr":1,"ks":{"o":{"a":0,"k":100,"ix":11},"r":{"a":0,"k":0,"ix":10},"p":{"a":0,"k":[1009.072,993.59,0],"ix":2},"a":{"a":0,"k":[235.361,371.37,0],"ix":1},"s":{"a":0,"k":[100,100,100],"ix":6}},"ao":0,"shapes":[{"ty":"gr","it":[{"ind":0,"ty":"sh","ix":1,"ks":{"a":0,"k":{"i":[[0,0],[0,0],[0,0]],"o":[[0,0],[0,0],[0,0]],"v":[[109.844,-269.702],[-109.844,-82.129],[-109.844,269.702]],"c":false},"ix":2},"nm":"Path 1","mn":"ADBE Vector Shape - Group","hd":false},{"ty":"st","c":{"a":0,"k":[0.18431372549,0.207843137255,0.258823529412,1],"ix":3},"o":{"a":0,"k":100,"ix":4},"w":{"a":0,"k":47,"ix":5},"lc":1,"lj":1,"ml":10,"bm":0,"nm":"Stroke 1","mn":"ADBE Vector Graphic - Stroke","hd":false},{"ty":"tr","p":{"a":0,"k":[318.133,387.202],"ix":2},"a":{"a":0,"k":[0,0],"ix":1},"s":{"a":0,"k":[100,100],"ix":3},"r":{"a":0,"k":0,"ix":6},"o":{"a":0,"k":100,"ix":7},"sk":{"a":0,"k":0,"ix":4},"sa":{"a":0,"k":0,"ix":5},"nm":"Transform"}],"nm":"Group 1","np":2,"cix":2,"bm":0,"ix":1,"mn":"ADBE Vector Group","hd":false},{"ty":"gr","it":[{"ind":0,"ty":"sh","ix":1,"ks":{"a":0,"k":{"i":[[0,0],[0,0]],"o":[[0,0],[0,0]],"v":[[284.807,573.427],[447.749,573.427]],"c":false},"ix":2},"nm":"Path 1","mn":"ADBE Vector Shape - Group","hd":false},{"ty":"st","c":{"a":0,"k":[0.18431372549,0.207843137255,0.258823529412,1],"ix":3},"o":{"a":0,"k":100,"ix":4},"w":{"a":0,"k":7,"ix":5},"lc":1,"lj":1,"ml":10,"bm":0,"nm":"Stroke 1","mn":"ADBE Vector Graphic - Stroke","hd":false},{"ty":"tr","p":{"a":0,"k":[0,0],"ix":2},"a":{"a":0,"k":[0,0],"ix":1},"s":{"a":0,"k":[100,100],"ix":3},"r":{"a":0,"k":0,"ix":6},"o":{"a":0,"k":100,"ix":7},"sk":{"a":0,"k":0,"ix":4},"sa":{"a":0,"k":0,"ix":5},"nm":"Transform"}],"nm":"Group 2","np":2,"cix":2,"bm":0,"ix":2,"mn":"ADBE Vector Group","hd":false},{"ty":"gr","it":[{"ind":0,"ty":"sh","ix":1,"ks":{"a":0,"k":{"i":[[0,0],[0,0]],"o":[[0,0],[0,0]],"v":[[284.807,323.377],[467.221,323.377]],"c":false},"ix":2},"nm":"Path 1","mn":"ADBE Vector Shape - Group","hd":false},{"ty":"st","c":{"a":0,"k":[0.18431372549,0.207843137255,0.258823529412,1],"ix":3},"o":{"a":0,"k":100,"ix":4},"w":{"a":0,"k":7,"ix":5},"lc":1,"lj":1,"ml":10,"bm":0,"nm":"Stroke 1","mn":"ADBE Vector Graphic - Stroke","hd":false},{"ty":"tr","p":{"a":0,"k":[0,0],"ix":2},"a":{"a":0,"k":[0,0],"ix":1},"s":{"a":0,"k":[100,100],"ix":3},"r":{"a":0,"k":0,"ix":6},"o":{"a":0,"k":100,"ix":7},"sk":{"a":0,"k":0,"ix":4},"sa":{"a":0,"k":0,"ix":5},"nm":"Transform"}],"nm":"Group 3","np":2,"cix":2,"bm":0,"ix":3,"mn":"ADBE Vector Group","hd":false},{"ty":"gr","it":[{"ind":0,"ty":"sh","ix":1,"ks":{"a":0,"k":{"i":[[0,0],[0,0]],"o":[[0,0],[0,0]],"v":[[370.809,166.312],[370.809,326.963]],"c":false},"ix":2},"nm":"Path 1","mn":"ADBE Vector Shape - Group","hd":false},{"ty":"st","c":{"a":0,"k":[0.18431372549,0.207843137255,0.258823529412,1],"ix":3},"o":{"a":0,"k":100,"ix":4},"w":{"a":0,"k":7,"ix":5},"lc":1,"lj":1,"ml":10,"bm":0,"nm":"Stroke 1","mn":"ADBE Vector Graphic - Stroke","hd":false},{"ty":"tr","p":{"a":0,"k":[0,0],"ix":2},"a":{"a":0,"k":[0,0],"ix":1},"s":{"a":0,"k":[100,100],"ix":3},"r":{"a":0,"k":0,"ix":6},"o":{"a":0,"k":100,"ix":7},"sk":{"a":0,"k":0,"ix":4},"sa":{"a":0,"k":0,"ix":5},"nm":"Transform"}],"nm":"Group 4","np":2,"cix":2,"bm":0,"ix":4,"mn":"ADBE Vector Group","hd":false},{"ty":"gr","it":[{"ind":0,"ty":"sh","ix":1,"ks":{"a":0,"k":{"i":[[0,0],[0,0]],"o":[[0,0],[0,0]],"v":[[-82.247,-77.823],[82.247,77.823]],"c":false},"ix":2},"nm":"Path 1","mn":"ADBE Vector Shape - Group","hd":false},{"ty":"st","c":{"a":0,"k":[0.18431372549,0.207843137255,0.258823529412,1],"ix":3},"o":{"a":0,"k":100,"ix":4},"w":{"a":0,"k":7,"ix":5},"lc":1,"lj":1,"ml":10,"bm":0,"nm":"Stroke 1","mn":"ADBE Vector Graphic - Stroke","hd":false},{"ty":"tr","p":{"a":0,"k":[153.897,203.468],"ix":2},"a":{"a":0,"k":[0,0],"ix":1},"s":{"a":0,"k":[100,100],"ix":3},"r":{"a":0,"k":0,"ix":6},"o":{"a":0,"k":100,"ix":7},"sk":{"a":0,"k":0,"ix":4},"sa":{"a":0,"k":0,"ix":5},"nm":"Transform"}],"nm":"Group 5","np":2,"cix":2,"bm":0,"ix":5,"mn":"ADBE Vector Group","hd":false},{"ty":"gr","it":[{"ind":0,"ty":"sh","ix":1,"ks":{"a":0,"k":{"i":[[0,0],[0,0],[0,0]],"o":[[0,0],[0,0],[0,0]],"v":[[107.971,8.252],[39.254,-63.89],[-107.971,63.89]],"c":false},"ix":2},"nm":"Path 1","mn":"ADBE Vector Shape - Group","hd":false},{"ty":"st","c":{"a":0,"k":[0.18431372549,0.207843137255,0.258823529412,1],"ix":3},"o":{"a":0,"k":100,"ix":4},"w":{"a":0,"k":7,"ix":5},"lc":1,"lj":1,"ml":10,"bm":0,"nm":"Stroke 1","mn":"ADBE Vector Graphic - Stroke","hd":false},{"ty":"tr","p":{"a":0,"k":[272.596,149.728],"ix":2},"a":{"a":0,"k":[0,0],"ix":1},"s":{"a":0,"k":[100,100],"ix":3},"r":{"a":0,"k":0,"ix":6},"o":{"a":0,"k":100,"ix":7},"sk":{"a":0,"k":0,"ix":4},"sa":{"a":0,"k":0,"ix":5},"nm":"Transform"}],"nm":"Group 6","np":2,"cix":2,"bm":0,"ix":6,"mn":"ADBE Vector Group","hd":false},{"ty":"gr","it":[{"ind":0,"ty":"sh","ix":1,"ks":{"a":0,"k":{"i":[[0,0],[0,0]],"o":[[0,0],[0,0]],"v":[[284.807,254.203],[284.807,656.903]],"c":false},"ix":2},"nm":"Path 1","mn":"ADBE Vector Shape - Group","hd":false},{"ty":"st","c":{"a":0,"k":[0.18431372549,0.207843137255,0.258823529412,1],"ix":3},"o":{"a":0,"k":100,"ix":4},"w":{"a":0,"k":7,"ix":5},"lc":1,"lj":1,"ml":10,"bm":0,"nm":"Stroke 1","mn":"ADBE Vector Graphic - Stroke","hd":false},{"ty":"tr","p":{"a":0,"k":[0,0],"ix":2},"a":{"a":0,"k":[0,0],"ix":1},"s":{"a":0,"k":[100,100],"ix":3},"r":{"a":0,"k":0,"ix":6},"o":{"a":0,"k":100,"ix":7},"sk":{"a":0,"k":0,"ix":4},"sa":{"a":0,"k":0,"ix":5},"nm":"Transform"}],"nm":"Group 7","np":2,"cix":2,"bm":0,"ix":7,"mn":"ADBE Vector Group","hd":false},{"ty":"gr","it":[{"ind":0,"ty":"sh","ix":1,"ks":{"a":0,"k":{"i":[[0,0],[0,0]],"o":[[0,0],[0,0]],"v":[[208.289,401.656],[284.807,401.656]],"c":false},"ix":2},"nm":"Path 1","mn":"ADBE Vector Shape - Group","hd":false},{"ty":"st","c":{"a":0,"k":[0.18431372549,0.207843137255,0.258823529412,1],"ix":3},"o":{"a":0,"k":100,"ix":4},"w":{"a":0,"k":7,"ix":5},"lc":1,"lj":1,"ml":10,"bm":0,"nm":"Stroke 1","mn":"ADBE Vector Graphic - Stroke","hd":false},{"ty":"tr","p":{"a":0,"k":[0,0],"ix":2},"a":{"a":0,"k":[0,0],"ix":1},"s":{"a":0,"k":[100,100],"ix":3},"r":{"a":0,"k":0,"ix":6},"o":{"a":0,"k":100,"ix":7},"sk":{"a":0,"k":0,"ix":4},"sa":{"a":0,"k":0,"ix":5},"nm":"Transform"}],"nm":"Group 8","np":2,"cix":2,"bm":0,"ix":8,"mn":"ADBE Vector Group","hd":false},{"ty":"gr","it":[{"ind":0,"ty":"sh","ix":1,"ks":{"a":0,"k":{"i":[[0,0],[0,0]],"o":[[0,0],[0,0]],"v":[[99.319,149.943],[99.319,608.094]],"c":false},"ix":2},"nm":"Path 1","mn":"ADBE Vector Shape - Group","hd":false},{"ty":"st","c":{"a":0,"k":[0.18431372549,0.207843137255,0.258823529412,1],"ix":3},"o":{"a":0,"k":100,"ix":4},"w":{"a":0,"k":7,"ix":5},"lc":1,"lj":1,"ml":10,"bm":0,"nm":"Stroke 1","mn":"ADBE Vector Graphic - Stroke","hd":false},{"ty":"tr","p":{"a":0,"k":[0,0],"ix":2},"a":{"a":0,"k":[0,0],"ix":1},"s":{"a":0,"k":[100,100],"ix":3},"r":{"a":0,"k":0,"ix":6},"o":{"a":0,"k":100,"ix":7},"sk":{"a":0,"k":0,"ix":4},"sa":{"a":0,"k":0,"ix":5},"nm":"Transform"}],"nm":"Group 9","np":2,"cix":2,"bm":0,"ix":9,"mn":"ADBE Vector Group","hd":false},{"ty":"gr","it":[{"ind":0,"ty":"sh","ix":1,"ks":{"a":0,"k":{"i":[[0,0],[0,0]],"o":[[0,0],[0,0]],"v":[[208.289,342.848],[99.319,342.848]],"c":false},"ix":2},"nm":"Path 1","mn":"ADBE Vector Shape - Group","hd":false},{"ty":"st","c":{"a":0,"k":[0.18431372549,0.207843137255,0.258823529412,1],"ix":3},"o":{"a":0,"k":100,"ix":4},"w":{"a":0,"k":7,"ix":5},"lc":1,"lj":1,"ml":10,"bm":0,"nm":"Stroke 1","mn":"ADBE Vector Graphic - Stroke","hd":false},{"ty":"tr","p":{"a":0,"k":[0,0],"ix":2},"a":{"a":0,"k":[0,0],"ix":1},"s":{"a":0,"k":[100,100],"ix":3},"r":{"a":0,"k":0,"ix":6},"o":{"a":0,"k":100,"ix":7},"sk":{"a":0,"k":0,"ix":4},"sa":{"a":0,"k":0,"ix":5},"nm":"Transform"}],"nm":"Group 10","np":2,"cix":2,"bm":0,"ix":10,"mn":"ADBE Vector Group","hd":false},{"ty":"gr","it":[{"ind":0,"ty":"sh","ix":1,"ks":{"a":0,"k":{"i":[[0,0],[0,0]],"o":[[0,0],[0,0]],"v":[[208.289,466.848],[3.5,466.848]],"c":false},"ix":2},"nm":"Path 1","mn":"ADBE Vector Shape - Group","hd":false},{"ty":"st","c":{"a":0,"k":[0.18431372549,0.207843137255,0.258823529412,1],"ix":3},"o":{"a":0,"k":100,"ix":4},"w":{"a":0,"k":7,"ix":5},"lc":1,"lj":1,"ml":10,"bm":0,"nm":"Stroke 1","mn":"ADBE Vector Graphic - Stroke","hd":false},{"ty":"tr","p":{"a":0,"k":[0,0],"ix":2},"a":{"a":0,"k":[0,0],"ix":1},"s":{"a":0,"k":[100,100],"ix":3},"r":{"a":0,"k":0,"ix":6},"o":{"a":0,"k":100,"ix":7},"sk":{"a":0,"k":0,"ix":4},"sa":{"a":0,"k":0,"ix":5},"nm":"Transform"}],"nm":"Group 11","np":2,"cix":2,"bm":0,"ix":11,"mn":"ADBE Vector Group","hd":false}],"ip":0,"op":242.242242242242,"st":0,"bm":0},{"ddd":0,"ind":2,"ty":4,"nm":"Layer 2","sr":1,"ks":{"o":{"a":0,"k":100,"ix":11},"r":{"a":0,"k":0,"ix":10},"p":{"a":0,"k":[1219.572,471.09,0],"ix":2},"a":{"a":0,"k":[235.361,371.37,0],"ix":1},"s":{"a":0,"k":[100,100,100],"ix":6}},"ao":0,"shapes":[{"ty":"gr","it":[{"ind":0,"ty":"sh","ix":1,"ks":{"a":0,"k":{"i":[[0,0],[0,0],[0,0]],"o":[[0,0],[0,0],[0,0]],"v":[[109.844,-269.702],[-109.844,-82.129],[-109.844,269.702]],"c":false},"ix":2},"nm":"Path 1","mn":"ADBE Vector Shape - Group","hd":false},{"ty":"st","c":{"a":0,"k":[0.18431372549,0.207843137255,0.258823529412,1],"ix":3},"o":{"a":0,"k":100,"ix":4},"w":{"a":0,"k":47,"ix":5},"lc":1,"lj":1,"ml":10,"bm":0,"nm":"Stroke 1","mn":"ADBE Vector Graphic - Stroke","hd":false},{"ty":"tr","p":{"a":0,"k":[318.133,387.202],"ix":2},"a":{"a":0,"k":[0,0],"ix":1},"s":{"a":0,"k":[100,100],"ix":3},"r":{"a":0,"k":0,"ix":6},"o":{"a":0,"k":100,"ix":7},"sk":{"a":0,"k":0,"ix":4},"sa":{"a":0,"k":0,"ix":5},"nm":"Transform"}],"nm":"Group 1","np":2,"cix":2,"bm":0,"ix":1,"mn":"ADBE Vector Group","hd":false},{"ty":"gr","it":[{"ind":0,"ty":"sh","ix":1,"ks":{"a":0,"k":{"i":[[0,0],[0,0]],"o":[[0,0],[0,0]],"v":[[284.807,573.427],[447.749,573.427]],"c":false},"ix":2},"nm":"Path 1","mn":"ADBE Vector Shape - Group","hd":false},{"ty":"st","c":{"a":0,"k":[0.18431372549,0.207843137255,0.258823529412,1],"ix":3},"o":{"a":0,"k":100,"ix":4},"w":{"a":0,"k":7,"ix":5},"lc":1,"lj":1,"ml":10,"bm":0,"nm":"Stroke 1","mn":"ADBE Vector Graphic - Stroke","hd":false},{"ty":"tr","p":{"a":0,"k":[0,0],"ix":2},"a":{"a":0,"k":[0,0],"ix":1},"s":{"a":0,"k":[100,100],"ix":3},"r":{"a":0,"k":0,"ix":6},"o":{"a":0,"k":100,"ix":7},"sk":{"a":0,"k":0,"ix":4},"sa":{"a":0,"k":0,"ix":5},"nm":"Transform"}],"nm":"Group 2","np":2,"cix":2,"bm":0,"ix":2,"mn":"ADBE Vector Group","hd":false},{"ty":"gr","it":[{"ind":0,"ty":"sh","ix":1,"ks":{"a":0,"k":{"i":[[0,0],[0,0]],"o":[[0,0],[0,0]],"v":[[284.807,323.377],[467.221,323.377]],"c":false},"ix":2},"nm":"Path 1","mn":"ADBE Vector Shape - Group","hd":false},{"ty":"st","c":{"a":0,"k":[0.18431372549,0.207843137255,0.258823529412,1],"ix":3},"o":{"a":0,"k":100,"ix":4},"w":{"a":0,"k":7,"ix":5},"lc":1,"lj":1,"ml":10,"bm":0,"nm":"Stroke 1","mn":"ADBE Vector Graphic - Stroke","hd":false},{"ty":"tr","p":{"a":0,"k":[0,0],"ix":2},"a":{"a":0,"k":[0,0],"ix":1},"s":{"a":0,"k":[100,100],"ix":3},"r":{"a":0,"k":0,"ix":6},"o":{"a":0,"k":100,"ix":7},"sk":{"a":0,"k":0,"ix":4},"sa":{"a":0,"k":0,"ix":5},"nm":"Transform"}],"nm":"Group 3","np":2,"cix":2,"bm":0,"ix":3,"mn":"ADBE Vector Group","hd":false},{"ty":"gr","it":[{"ind":0,"ty":"sh","ix":1,"ks":{"a":0,"k":{"i":[[0,0],[0,0]],"o":[[0,0],[0,0]],"v":[[370.809,166.312],[370.809,326.963]],"c":false},"ix":2},"nm":"Path 1","mn":"ADBE Vector Shape - Group","hd":false},{"ty":"st","c":{"a":0,"k":[0.18431372549,0.207843137255,0.258823529412,1],"ix":3},"o":{"a":0,"k":100,"ix":4},"w":{"a":0,"k":7,"ix":5},"lc":1,"lj":1,"ml":10,"bm":0,"nm":"Stroke 1","mn":"ADBE Vector Graphic - Stroke","hd":false},{"ty":"tr","p":{"a":0,"k":[0,0],"ix":2},"a":{"a":0,"k":[0,0],"ix":1},"s":{"a":0,"k":[100,100],"ix":3},"r":{"a":0,"k":0,"ix":6},"o":{"a":0,"k":100,"ix":7},"sk":{"a":0,"k":0,"ix":4},"sa":{"a":0,"k":0,"ix":5},"nm":"Transform"}],"nm":"Group 4","np":2,"cix":2,"bm":0,"ix":4,"mn":"ADBE Vector Group","hd":false},{"ty":"gr","it":[{"ind":0,"ty":"sh","ix":1,"ks":{"a":0,"k":{"i":[[0,0],[0,0]],"o":[[0,0],[0,0]],"v":[[-82.247,-77.823],[82.247,77.823]],"c":false},"ix":2},"nm":"Path 1","mn":"ADBE Vector Shape - Group","hd":false},{"ty":"st","c":{"a":0,"k":[0.18431372549,0.207843137255,0.258823529412,1],"ix":3},"o":{"a":0,"k":100,"ix":4},"w":{"a":0,"k":7,"ix":5},"lc":1,"lj":1,"ml":10,"bm":0,"nm":"Stroke 1","mn":"ADBE Vector Graphic - Stroke","hd":false},{"ty":"tr","p":{"a":0,"k":[153.897,203.468],"ix":2},"a":{"a":0,"k":[0,0],"ix":1},"s":{"a":0,"k":[100,100],"ix":3},"r":{"a":0,"k":0,"ix":6},"o":{"a":0,"k":100,"ix":7},"sk":{"a":0,"k":0,"ix":4},"sa":{"a":0,"k":0,"ix":5},"nm":"Transform"}],"nm":"Group 5","np":2,"cix":2,"bm":0,"ix":5,"mn":"ADBE Vector Group","hd":false},{"ty":"gr","it":[{"ind":0,"ty":"sh","ix":1,"ks":{"a":0,"k":{"i":[[0,0],[0,0],[0,0]],"o":[[0,0],[0,0],[0,0]],"v":[[107.971,8.252],[39.254,-63.89],[-107.971,63.89]],"c":false},"ix":2},"nm":"Path 1","mn":"ADBE Vector Shape - Group","hd":false},{"ty":"st","c":{"a":0,"k":[0.18431372549,0.207843137255,0.258823529412,1],"ix":3},"o":{"a":0,"k":100,"ix":4},"w":{"a":0,"k":7,"ix":5},"lc":1,"lj":1,"ml":10,"bm":0,"nm":"Stroke 1","mn":"ADBE Vector Graphic - Stroke","hd":false},{"ty":"tr","p":{"a":0,"k":[272.596,149.728],"ix":2},"a":{"a":0,"k":[0,0],"ix":1},"s":{"a":0,"k":[100,100],"ix":3},"r":{"a":0,"k":0,"ix":6},"o":{"a":0,"k":100,"ix":7},"sk":{"a":0,"k":0,"ix":4},"sa":{"a":0,"k":0,"ix":5},"nm":"Transform"}],"nm":"Group 6","np":2,"cix":2,"bm":0,"ix":6,"mn":"ADBE Vector Group","hd":false},{"ty":"gr","it":[{"ind":0,"ty":"sh","ix":1,"ks":{"a":0,"k":{"i":[[0,0],[0,0]],"o":[[0,0],[0,0]],"v":[[284.807,254.203],[284.825,930.903]],"c":false},"ix":2},"nm":"Path 1","mn":"ADBE Vector Shape - Group","hd":false},{"ty":"st","c":{"a":0,"k":[0.18431372549,0.207843137255,0.258823529412,1],"ix":3},"o":{"a":0,"k":100,"ix":4},"w":{"a":0,"k":7,"ix":5},"lc":1,"lj":1,"ml":10,"bm":0,"nm":"Stroke 1","mn":"ADBE Vector Graphic - Stroke","hd":false},{"ty":"tr","p":{"a":0,"k":[0,0],"ix":2},"a":{"a":0,"k":[0,0],"ix":1},"s":{"a":0,"k":[100,100],"ix":3},"r":{"a":0,"k":0,"ix":6},"o":{"a":0,"k":100,"ix":7},"sk":{"a":0,"k":0,"ix":4},"sa":{"a":0,"k":0,"ix":5},"nm":"Transform"}],"nm":"Group 7","np":2,"cix":2,"bm":0,"ix":7,"mn":"ADBE Vector Group","hd":false},{"ty":"gr","it":[{"ind":0,"ty":"sh","ix":1,"ks":{"a":0,"k":{"i":[[0,0],[0,0]],"o":[[0,0],[0,0]],"v":[[208.289,401.656],[284.807,401.656]],"c":false},"ix":2},"nm":"Path 1","mn":"ADBE Vector Shape - Group","hd":false},{"ty":"st","c":{"a":0,"k":[0.18431372549,0.207843137255,0.258823529412,1],"ix":3},"o":{"a":0,"k":100,"ix":4},"w":{"a":0,"k":7,"ix":5},"lc":1,"lj":1,"ml":10,"bm":0,"nm":"Stroke 1","mn":"ADBE Vector Graphic - Stroke","hd":false},{"ty":"tr","p":{"a":0,"k":[0,0],"ix":2},"a":{"a":0,"k":[0,0],"ix":1},"s":{"a":0,"k":[100,100],"ix":3},"r":{"a":0,"k":0,"ix":6},"o":{"a":0,"k":100,"ix":7},"sk":{"a":0,"k":0,"ix":4},"sa":{"a":0,"k":0,"ix":5},"nm":"Transform"}],"nm":"Group 8","np":2,"cix":2,"bm":0,"ix":8,"mn":"ADBE Vector Group","hd":false},{"ty":"gr","it":[{"ind":0,"ty":"sh","ix":1,"ks":{"a":0,"k":{"i":[[0,0],[0,0]],"o":[[0,0],[0,0]],"v":[[99.319,149.943],[99.319,608.094]],"c":false},"ix":2},"nm":"Path 1","mn":"ADBE Vector Shape - Group","hd":false},{"ty":"st","c":{"a":0,"k":[0.18431372549,0.207843137255,0.258823529412,1],"ix":3},"o":{"a":0,"k":100,"ix":4},"w":{"a":0,"k":7,"ix":5},"lc":1,"lj":1,"ml":10,"bm":0,"nm":"Stroke 1","mn":"ADBE Vector Graphic - Stroke","hd":false},{"ty":"tr","p":{"a":0,"k":[0,0],"ix":2},"a":{"a":0,"k":[0,0],"ix":1},"s":{"a":0,"k":[100,100],"ix":3},"r":{"a":0,"k":0,"ix":6},"o":{"a":0,"k":100,"ix":7},"sk":{"a":0,"k":0,"ix":4},"sa":{"a":0,"k":0,"ix":5},"nm":"Transform"}],"nm":"Group 9","np":2,"cix":2,"bm":0,"ix":9,"mn":"ADBE Vector Group","hd":false},{"ty":"gr","it":[{"ind":0,"ty":"sh","ix":1,"ks":{"a":0,"k":{"i":[[0,0],[0,0]],"o":[[0,0],[0,0]],"v":[[208.289,342.848],[99.319,342.848]],"c":false},"ix":2},"nm":"Path 1","mn":"ADBE Vector Shape - Group","hd":false},{"ty":"st","c":{"a":0,"k":[0.18431372549,0.207843137255,0.258823529412,1],"ix":3},"o":{"a":0,"k":100,"ix":4},"w":{"a":0,"k":7,"ix":5},"lc":1,"lj":1,"ml":10,"bm":0,"nm":"Stroke 1","mn":"ADBE Vector Graphic - Stroke","hd":false},{"ty":"tr","p":{"a":0,"k":[0,0],"ix":2},"a":{"a":0,"k":[0,0],"ix":1},"s":{"a":0,"k":[100,100],"ix":3},"r":{"a":0,"k":0,"ix":6},"o":{"a":0,"k":100,"ix":7},"sk":{"a":0,"k":0,"ix":4},"sa":{"a":0,"k":0,"ix":5},"nm":"Transform"}],"nm":"Group 10","np":2,"cix":2,"bm":0,"ix":10,"mn":"ADBE Vector Group","hd":false},{"ty":"gr","it":[{"ind":0,"ty":"sh","ix":1,"ks":{"a":0,"k":{"i":[[0,0],[0,0]],"o":[[0,0],[0,0]],"v":[[208.289,466.848],[3.5,466.848]],"c":false},"ix":2},"nm":"Path 1","mn":"ADBE Vector Shape - Group","hd":false},{"ty":"st","c":{"a":0,"k":[0.18431372549,0.207843137255,0.258823529412,1],"ix":3},"o":{"a":0,"k":100,"ix":4},"w":{"a":0,"k":7,"ix":5},"lc":1,"lj":1,"ml":10,"bm":0,"nm":"Stroke 1","mn":"ADBE Vector Graphic - Stroke","hd":false},{"ty":"tr","p":{"a":0,"k":[0,0],"ix":2},"a":{"a":0,"k":[0,0],"ix":1},"s":{"a":0,"k":[100,100],"ix":3},"r":{"a":0,"k":0,"ix":6},"o":{"a":0,"k":100,"ix":7},"sk":{"a":0,"k":0,"ix":4},"sa":{"a":0,"k":0,"ix":5},"nm":"Transform"}],"nm":"Group 11","np":2,"cix":2,"bm":0,"ix":11,"mn":"ADBE Vector Group","hd":false}],"ip":0,"op":242.242242242242,"st":0,"bm":0}]}],"layers":[{"ddd":0,"ind":1,"ty":4,"nm":"head","parent":4,"sr":1,"ks":{"o":{"a":0,"k":100,"ix":11},"r":{"a":1,"k":[{"i":{"x":[0.667],"y":[1]},"o":{"x":[0.333],"y":[0]},"t":57,"s":[0]},{"i":{"x":[0.667],"y":[1]},"o":{"x":[0.333],"y":[0]},"t":70,"s":[11]},{"i":{"x":[0.667],"y":[1]},"o":{"x":[0.333],"y":[0]},"t":84,"s":[11]},{"i":{"x":[0.833],"y":[1]},"o":{"x":[0.164],"y":[0]},"t":99,"s":[0]},{"i":{"x":[0.667],"y":[1]},"o":{"x":[0.333],"y":[0]},"t":147,"s":[0]},{"i":{"x":[0.667],"y":[1]},"o":{"x":[0.333],"y":[0]},"t":160,"s":[-11]},{"i":{"x":[0.667],"y":[1]},"o":{"x":[0.333],"y":[0]},"t":174,"s":[-11]},{"t":189,"s":[0]}],"ix":10},"p":{"a":0,"k":[28.964,47.85,0],"ix":2},"a":{"a":0,"k":[18.259,34.315,0],"ix":1},"s":{"a":0,"k":[100,100,100],"ix":6}},"ao":0,"shapes":[{"ty":"gr","it":[{"ind":0,"ty":"sh","ix":1,"ks":{"a":0,"k":{"i":[[0,-9.61],[9.196,0],[0,9.61],[-9.197,0]],"o":[[0,9.61],[-9.197,0],[0,-9.61],[9.196,0]],"v":[[16.652,0],[0,17.401],[-16.652,0],[0,-17.401]],"c":true},"ix":2},"nm":"Path 1","mn":"ADBE Vector Shape - Group","hd":false},{"ty":"st","c":{"a":0,"k":[0.184000007779,0.20800000359,0.258999992819,1],"ix":3},"o":{"a":0,"k":100,"ix":4},"w":{"a":0,"k":1,"ix":5},"lc":1,"lj":1,"ml":10,"bm":0,"nm":"Stroke 1","mn":"ADBE Vector Graphic - Stroke","hd":false},{"ty":"fl","c":{"a":0,"k":[1,1,1,1],"ix":4},"o":{"a":0,"k":100,"ix":5},"r":1,"bm":0,"nm":"Fill 1","mn":"ADBE Vector Graphic - Fill","hd":false},{"ty":"tr","p":{"a":0,"k":[19.152,24.64],"ix":2},"a":{"a":0,"k":[0,0],"ix":1},"s":{"a":0,"k":[100,100],"ix":3},"r":{"a":0,"k":0,"ix":6},"o":{"a":0,"k":100,"ix":7},"sk":{"a":0,"k":0,"ix":4},"sa":{"a":0,"k":0,"ix":5},"nm":"Transform"}],"nm":"Group 1","np":3,"cix":2,"bm":0,"ix":1,"mn":"ADBE Vector Group","hd":false},{"ty":"gr","it":[{"ind":0,"ty":"sh","ix":1,"ks":{"a":0,"k":{"i":[[6.904,0],[0,0],[0,-6.904],[0,0],[0,0],[0,0]],"o":[[0,0],[-6.905,0],[0,0],[0,0],[0,0],[0,-6.904]],"v":[[2.746,-8.718],[-2.745,-8.718],[-15.247,3.784],[-15.247,8.718],[15.247,8.718],[15.247,3.784]],"c":true},"ix":2},"nm":"Path 1","mn":"ADBE Vector Shape - Group","hd":false},{"ty":"fl","c":{"a":0,"k":[1,0.277999997606,0.340999977261,1],"ix":4},"o":{"a":0,"k":100,"ix":5},"r":1,"bm":0,"nm":"Fill 1","mn":"ADBE Vector Graphic - Fill","hd":false},{"ty":"tr","p":{"a":0,"k":[19.13,8.968],"ix":2},"a":{"a":0,"k":[0,0],"ix":1},"s":{"a":0,"k":[100,100],"ix":3},"r":{"a":0,"k":0,"ix":6},"o":{"a":0,"k":100,"ix":7},"sk":{"a":0,"k":0,"ix":4},"sa":{"a":0,"k":0,"ix":5},"nm":"Transform"}],"nm":"Group 2","np":2,"cix":2,"bm":0,"ix":2,"mn":"ADBE Vector Group","hd":false}],"ip":0,"op":242.242242242242,"st":0,"bm":0},{"ddd":0,"ind":2,"ty":4,"nm":"body","parent":4,"sr":1,"ks":{"o":{"a":0,"k":100,"ix":11},"r":{"a":0,"k":0,"ix":10},"p":{"a":0,"k":[29.958,50.392,0],"ix":2},"a":{"a":0,"k":[47.22,43.215,0],"ix":1},"s":{"a":0,"k":[100,100,100],"ix":6}},"ao":0,"shapes":[{"ty":"gr","it":[{"ind":0,"ty":"sh","ix":1,"ks":{"a":1,"k":[{"i":{"x":0.667,"y":1},"o":{"x":0.333,"y":0},"t":59,"s":[{"i":[[0,0],[1.788,-2.894],[3.83,-1.362],[0,0],[3.83,1.362],[1.787,2.893],[0,0],[0,0],[-2.894,-7.233],[0,0],[0,0],[-3.618,-1.18],[-4.445,1.451],[-1.503,4.469],[0,0],[-2.893,7.234],[0,0]],"o":[[0,0],[-1.787,2.893],[-3.83,1.362],[0,0],[-3.829,-1.362],[-1.787,-2.894],[0,0],[0,0],[2.893,7.234],[0,0],[1.503,4.469],[4.445,1.451],[3.618,-1.18],[0,0],[0,0],[2.894,-7.233],[0,0]],"v":[[37.204,-40.888],[33.601,-19.606],[20.58,-7.521],[-0.101,-2.075],[-20.782,-7.521],[-33.803,-19.606],[-37.317,-41.051],[-46.97,-40.099],[-41.888,-15.011],[-19.931,8.734],[-16.074,32.053],[-6.96,40],[6.758,40],[15.872,32.053],[19.729,8.734],[41.686,-15.011],[46.97,-41.451]],"c":true}]},{"i":{"x":0.667,"y":1},"o":{"x":0.333,"y":0},"t":72,"s":[{"i":[[0,0],[1.788,-2.894],[3.83,-1.362],[0,0],[3.83,1.362],[1.787,2.893],[0,0],[0,0],[-2.894,-7.233],[0,0],[0,0],[-3.618,-1.18],[-4.445,1.451],[-1.503,4.469],[0,0],[-2.893,7.234],[0,0]],"o":[[0,0],[-1.787,2.893],[-3.83,1.362],[0,0],[-3.829,-1.362],[-1.787,-2.894],[0,0],[0,0],[2.893,7.234],[0,0],[1.503,4.469],[4.445,1.451],[3.618,-1.18],[0,0],[0,0],[2.894,-7.233],[0,0]],"v":[[35.095,-37.455],[32.347,-17.928],[20.58,-7.521],[-0.101,-2.075],[-20.782,-7.521],[-32.769,-21.881],[-37.014,-45.279],[-48.173,-45.54],[-41.906,-17.138],[-19.931,8.734],[-16.074,32.053],[-6.96,40],[6.758,40],[15.872,32.053],[19.729,8.734],[41.542,-12.814],[45.947,-36.488]],"c":true}]},{"i":{"x":0.667,"y":1},"o":{"x":0.333,"y":0},"t":86,"s":[{"i":[[0,0],[1.788,-2.894],[3.83,-1.362],[0,0],[3.83,1.362],[1.787,2.893],[0,0],[0,0],[-2.894,-7.233],[0,0],[0,0],[-3.618,-1.18],[-4.445,1.451],[-1.503,4.469],[0,0],[-2.893,7.234],[0,0]],"o":[[0,0],[-1.787,2.893],[-3.83,1.362],[0,0],[-3.829,-1.362],[-1.787,-2.894],[0,0],[0,0],[2.893,7.234],[0,0],[1.503,4.469],[4.445,1.451],[3.618,-1.18],[0,0],[0,0],[2.894,-7.233],[0,0]],"v":[[35.095,-37.455],[32.347,-17.928],[20.58,-7.521],[-0.101,-2.075],[-20.782,-7.521],[-32.769,-21.881],[-37.014,-45.279],[-48.173,-45.54],[-41.906,-17.138],[-19.931,8.734],[-16.074,32.053],[-6.96,40],[6.758,40],[15.872,32.053],[19.729,8.734],[41.542,-12.814],[45.947,-36.488]],"c":true}]},{"i":{"x":0.667,"y":1},"o":{"x":0.333,"y":0},"t":101,"s":[{"i":[[0,0],[1.788,-2.894],[3.83,-1.362],[0,0],[3.83,1.362],[1.787,2.893],[0,0],[0,0],[-2.894,-7.233],[0,0],[0,0],[-3.618,-1.18],[-4.445,1.451],[-1.503,4.469],[0,0],[-2.893,7.234],[0,0]],"o":[[0,0],[-1.787,2.893],[-3.83,1.362],[0,0],[-3.829,-1.362],[-1.787,-2.894],[0,0],[0,0],[2.893,7.234],[0,0],[1.503,4.469],[4.445,1.451],[3.618,-1.18],[0,0],[0,0],[2.894,-7.233],[0,0]],"v":[[37.204,-40.888],[33.601,-19.606],[20.58,-7.521],[-0.101,-2.075],[-20.782,-7.521],[-33.803,-19.606],[-37.317,-41.051],[-46.97,-40.099],[-41.888,-15.011],[-19.931,8.734],[-16.074,32.053],[-6.96,40],[6.758,40],[15.872,32.053],[19.729,8.734],[41.686,-15.011],[46.97,-41.451]],"c":true}]},{"i":{"x":0.667,"y":1},"o":{"x":0.333,"y":0},"t":149,"s":[{"i":[[0,0],[1.788,-2.894],[3.83,-1.362],[0,0],[3.83,1.362],[1.787,2.893],[0,0],[0,0],[-2.894,-7.233],[0,0],[0,0],[-3.618,-1.18],[-4.445,1.451],[-1.503,4.469],[0,0],[-2.893,7.234],[0,0]],"o":[[0,0],[-1.787,2.893],[-3.83,1.362],[0,0],[-3.829,-1.362],[-1.787,-2.894],[0,0],[0,0],[2.893,7.234],[0,0],[1.503,4.469],[4.445,1.451],[3.618,-1.18],[0,0],[0,0],[2.894,-7.233],[0,0]],"v":[[37.204,-40.888],[33.601,-19.606],[20.58,-7.521],[-0.101,-2.075],[-20.782,-7.521],[-33.803,-19.606],[-37.317,-41.051],[-46.97,-40.099],[-41.888,-15.011],[-19.931,8.734],[-16.074,32.053],[-6.96,40],[6.758,40],[15.872,32.053],[19.729,8.734],[41.686,-15.011],[46.97,-41.451]],"c":true}]},{"i":{"x":0.667,"y":1},"o":{"x":0.333,"y":0},"t":162,"s":[{"i":[[0,0],[1.788,-2.894],[3.83,-1.362],[0,0],[3.83,1.362],[1.787,2.893],[0,0],[0,0],[-2.894,-7.233],[0,0],[0,0],[-3.618,-1.18],[-4.445,1.451],[-1.503,4.469],[0,0],[-2.893,7.234],[0,0]],"o":[[0,0],[-1.787,2.893],[-3.83,1.362],[0,0],[-3.829,-1.362],[-1.787,-2.894],[0,0],[0,0],[2.893,7.234],[0,0],[1.503,4.469],[4.445,1.451],[3.618,-1.18],[0,0],[0,0],[2.894,-7.233],[0,0]],"v":[[37.799,-44.304],[34.021,-21.199],[20.58,-7.521],[-0.101,-2.075],[-20.782,-7.521],[-32.711,-17.669],[-35.351,-36.617],[-45.456,-35.018],[-41.264,-12.9],[-19.931,8.734],[-16.074,32.053],[-6.96,40],[6.758,40],[15.872,32.053],[19.729,8.734],[41.448,-17.372],[47.273,-46.515]],"c":true}]},{"i":{"x":0.667,"y":1},"o":{"x":0.333,"y":0},"t":176,"s":[{"i":[[0,0],[1.788,-2.894],[3.83,-1.362],[0,0],[3.83,1.362],[1.787,2.893],[0,0],[0,0],[-2.894,-7.233],[0,0],[0,0],[-3.618,-1.18],[-4.445,1.451],[-1.503,4.469],[0,0],[-2.893,7.234],[0,0]],"o":[[0,0],[-1.787,2.893],[-3.83,1.362],[0,0],[-3.829,-1.362],[-1.787,-2.894],[0,0],[0,0],[2.893,7.234],[0,0],[1.503,4.469],[4.445,1.451],[3.618,-1.18],[0,0],[0,0],[2.894,-7.233],[0,0]],"v":[[37.799,-44.304],[34.021,-21.199],[20.58,-7.521],[-0.101,-2.075],[-20.782,-7.521],[-32.711,-17.669],[-35.351,-36.617],[-45.456,-35.018],[-41.264,-12.9],[-19.931,8.734],[-16.074,32.053],[-6.96,40],[6.758,40],[15.872,32.053],[19.729,8.734],[41.448,-17.372],[47.273,-46.515]],"c":true}]},{"t":191,"s":[{"i":[[0,0],[1.788,-2.894],[3.83,-1.362],[0,0],[3.83,1.362],[1.787,2.893],[0,0],[0,0],[-2.894,-7.233],[0,0],[0,0],[-3.618,-1.18],[-4.445,1.451],[-1.503,4.469],[0,0],[-2.893,7.234],[0,0]],"o":[[0,0],[-1.787,2.893],[-3.83,1.362],[0,0],[-3.829,-1.362],[-1.787,-2.894],[0,0],[0,0],[2.893,7.234],[0,0],[1.503,4.469],[4.445,1.451],[3.618,-1.18],[0,0],[0,0],[2.894,-7.233],[0,0]],"v":[[37.204,-40.888],[33.601,-19.606],[20.58,-7.521],[-0.101,-2.075],[-20.782,-7.521],[-33.803,-19.606],[-37.317,-41.051],[-46.97,-40.099],[-41.888,-15.011],[-19.931,8.734],[-16.074,32.053],[-6.96,40],[6.758,40],[15.872,32.053],[19.729,8.734],[41.686,-15.011],[46.97,-41.451]],"c":true}]}],"ix":2},"nm":"Path 1","mn":"ADBE Vector Shape - Group","hd":false},{"ty":"fl","c":{"a":0,"k":[1,0.277999997606,0.340999977261,1],"ix":4},"o":{"a":0,"k":100,"ix":5},"r":1,"bm":0,"nm":"Fill 1","mn":"ADBE Vector Graphic - Fill","hd":false},{"ty":"tr","p":{"a":0,"k":[47.22,41.701],"ix":2},"a":{"a":0,"k":[0,0],"ix":1},"s":{"a":0,"k":[100,100],"ix":3},"r":{"a":0,"k":0,"ix":6},"o":{"a":0,"k":100,"ix":7},"sk":{"a":0,"k":0,"ix":4},"sa":{"a":0,"k":0,"ix":5},"nm":"Transform"}],"nm":"Group 1","np":2,"cix":2,"bm":0,"ix":1,"mn":"ADBE Vector Group","hd":false},{"ty":"gr","it":[{"ind":0,"ty":"sh","ix":1,"ks":{"a":0,"k":{"i":[[13.191,0],[0,0],[1.411,13.692],[0,0],[-4.682,0],[0,0],[0.501,-4.861],[0,0]],"o":[[0,0],[-13.191,0],[0,0],[-0.501,-4.861],[0,0],[4.683,0],[0,0],[-1.411,13.692]],"v":[[0,24.255],[0,24.255],[-25.673,0.183],[-27.253,-15.155],[-19.424,-24.255],[19.424,-24.255],[27.254,-15.155],[25.673,0.183]],"c":true},"ix":2},"nm":"Path 1","mn":"ADBE Vector Shape - Group","hd":false},{"ty":"fl","c":{"a":0,"k":[0.184000007779,0.20800000359,0.258999992819,1],"ix":4},"o":{"a":0,"k":100,"ix":5},"r":1,"bm":0,"nm":"Fill 1","mn":"ADBE Vector Graphic - Fill","hd":false},{"ty":"tr","p":{"a":0,"k":[47.119,61.925],"ix":2},"a":{"a":0,"k":[0,0],"ix":1},"s":{"a":0,"k":[100,100],"ix":3},"r":{"a":0,"k":0,"ix":6},"o":{"a":0,"k":100,"ix":7},"sk":{"a":0,"k":0,"ix":4},"sa":{"a":0,"k":0,"ix":5},"nm":"Transform"}],"nm":"Group 2","np":2,"cix":2,"bm":0,"ix":2,"mn":"ADBE Vector Group","hd":false}],"ip":0,"op":242.242242242242,"st":0,"bm":0},{"ddd":0,"ind":3,"ty":4,"nm":"handle","parent":4,"sr":1,"ks":{"o":{"a":0,"k":100,"ix":11},"r":{"a":1,"k":[{"i":{"x":[0.667],"y":[1]},"o":{"x":[0.333],"y":[0]},"t":59,"s":[0]},{"i":{"x":[0.667],"y":[1]},"o":{"x":[0.333],"y":[0]},"t":72,"s":[6]},{"i":{"x":[0.667],"y":[1]},"o":{"x":[0.333],"y":[0]},"t":86,"s":[6]},{"i":{"x":[0.667],"y":[1]},"o":{"x":[0.296],"y":[0]},"t":101,"s":[0]},{"i":{"x":[0.667],"y":[1]},"o":{"x":[0.333],"y":[0]},"t":149,"s":[0]},{"i":{"x":[0.667],"y":[1]},"o":{"x":[0.333],"y":[0]},"t":162,"s":[-6]},{"i":{"x":[0.667],"y":[1]},"o":{"x":[0.333],"y":[0]},"t":176,"s":[-6]},{"t":191,"s":[0]}],"ix":10},"p":{"a":0,"k":[30.055,-2.259,0],"ix":2},"a":{"a":0,"k":[61.078,17.77,0],"ix":1},"s":{"a":0,"k":[100,100,100],"ix":6}},"ao":0,"shapes":[{"ty":"gr","it":[{"ind":0,"ty":"sh","ix":1,"ks":{"a":0,"k":{"i":[[-1.537,2.748],[0,0],[0.745,2.747],[3.246,0.438],[0.299,-1.057],[0,0],[0,0],[-2.786,-1.631],[0,0],[0,0]],"o":[[0,0],[0,0],[-0.551,-2.033],[-1.088,-0.148],[0,0],[0,0],[0,0],[1.981,1.16],[0,0],[0,0]],"v":[[5.341,6.706],[5.714,1.211],[7.716,-5.727],[-2.396,-9.306],[-4.81,-7.723],[-6.022,-3.445],[-7.465,-3.678],[-5.675,0.796],[-2.855,2.049],[-1.645,7.172]],"c":true},"ix":2},"nm":"Path 1","mn":"ADBE Vector Shape - Group","hd":false},{"ty":"st","c":{"a":0,"k":[0.184000007779,0.20800000359,0.258999992819,1],"ix":3},"o":{"a":0,"k":100,"ix":4},"w":{"a":0,"k":1,"ix":5},"lc":1,"lj":1,"ml":10,"bm":0,"nm":"Stroke 1","mn":"ADBE Vector Graphic - Stroke","hd":false},{"ty":"fl","c":{"a":0,"k":[1,1,1,1],"ix":4},"o":{"a":0,"k":100,"ix":5},"r":1,"bm":0,"nm":"Fill 1","mn":"ADBE Vector Graphic - Fill","hd":false},{"ty":"tr","p":{"a":0,"k":[101.417,24.98],"ix":2},"a":{"a":0,"k":[0,0],"ix":1},"s":{"a":0,"k":[100,100],"ix":3},"r":{"a":0,"k":0,"ix":6},"o":{"a":0,"k":100,"ix":7},"sk":{"a":0,"k":0,"ix":4},"sa":{"a":0,"k":0,"ix":5},"nm":"Transform"}],"nm":"Group 1","np":3,"cix":2,"bm":0,"ix":1,"mn":"ADBE Vector Group","hd":false},{"ty":"gr","it":[{"ind":0,"ty":"sh","ix":1,"ks":{"a":0,"k":{"i":[[1.537,2.748],[0,0],[-0.745,2.747],[-3.245,0.438],[-0.299,-1.057],[0,0],[0,0],[2.786,-1.631],[0,0],[0,0]],"o":[[0,0],[0,0],[0.551,-2.033],[1.089,-0.148],[0,0],[0,0],[0,0],[-1.981,1.16],[0,0],[0,0]],"v":[[-5.34,6.706],[-5.714,1.211],[-7.715,-5.727],[2.395,-9.306],[4.809,-7.723],[6.021,-3.445],[7.465,-3.678],[5.674,0.796],[2.855,2.049],[1.645,7.172]],"c":true},"ix":2},"nm":"Path 1","mn":"ADBE Vector Shape - Group","hd":false},{"ty":"st","c":{"a":0,"k":[0.184000007779,0.20800000359,0.258999992819,1],"ix":3},"o":{"a":0,"k":100,"ix":4},"w":{"a":0,"k":1,"ix":5},"lc":1,"lj":1,"ml":10,"bm":0,"nm":"Stroke 1","mn":"ADBE Vector Graphic - Stroke","hd":false},{"ty":"fl","c":{"a":0,"k":[1,1,1,1],"ix":4},"o":{"a":0,"k":100,"ix":5},"r":1,"bm":0,"nm":"Fill 1","mn":"ADBE Vector Graphic - Fill","hd":false},{"ty":"tr","p":{"a":0,"k":[20.344,24.98],"ix":2},"a":{"a":0,"k":[0,0],"ix":1},"s":{"a":0,"k":[100,100],"ix":3},"r":{"a":0,"k":0,"ix":6},"o":{"a":0,"k":100,"ix":7},"sk":{"a":0,"k":0,"ix":4},"sa":{"a":0,"k":0,"ix":5},"nm":"Transform"}],"nm":"Group 2","np":3,"cix":2,"bm":0,"ix":2,"mn":"ADBE Vector Group","hd":false},{"ty":"gr","it":[{"ind":0,"ty":"sh","ix":1,"ks":{"a":0,"k":{"i":[[4.476,0],[0,0],[0.666,4.427],[0,0],[-3.178,0],[0,0],[0.473,-3.143],[0,0]],"o":[[0,0],[-4.476,0],[0,0],[-0.473,-3.143],[0,0],[3.178,0],[0,0],[-0.667,4.427]],"v":[[0,9.961],[0,9.961],[-8.945,2.261],[-9.887,-3.99],[-4.748,-9.961],[4.748,-9.961],[9.887,-3.99],[8.946,2.261]],"c":true},"ix":2},"nm":"Path 1","mn":"ADBE Vector Shape - Group","hd":false},{"ty":"st","c":{"a":0,"k":[0.20800000359,0.20800000359,0.20800000359,1],"ix":3},"o":{"a":0,"k":100,"ix":4},"w":{"a":0,"k":1,"ix":5},"lc":1,"lj":1,"ml":10,"bm":0,"nm":"Stroke 1","mn":"ADBE Vector Graphic - Stroke","hd":false},{"ty":"fl","c":{"a":0,"k":[1,1,1,1],"ix":4},"o":{"a":0,"k":100,"ix":5},"r":1,"bm":0,"nm":"Fill 1","mn":"ADBE Vector Graphic - Fill","hd":false},{"ty":"tr","p":{"a":0,"k":[60.88,12.461],"ix":2},"a":{"a":0,"k":[0,0],"ix":1},"s":{"a":0,"k":[100,100],"ix":3},"r":{"a":0,"k":0,"ix":6},"o":{"a":0,"k":100,"ix":7},"sk":{"a":0,"k":0,"ix":4},"sa":{"a":0,"k":0,"ix":5},"nm":"Transform"}],"nm":"Group 3","np":3,"cix":2,"bm":0,"ix":3,"mn":"ADBE Vector Group","hd":false},{"ty":"gr","it":[{"ind":0,"ty":"sh","ix":1,"ks":{"a":0,"k":{"i":[[5.729,0],[0,0],[0.958,4.549],[0,0],[-4.493,0],[0,0],[0.751,-3.568],[0,0]],"o":[[0,0],[-5.729,0],[0,0],[-0.752,-3.568],[0,0],[4.493,0],[0,0],[-0.959,4.549]],"v":[[8.896,8.841],[-8.895,8.841],[-20.477,0.963],[-21.104,-2.019],[-13.951,-8.841],[13.951,-8.841],[21.105,-2.019],[20.477,0.963]],"c":true},"ix":2},"nm":"Path 1","mn":"ADBE Vector Shape - Group","hd":false},{"ty":"fl","c":{"a":0,"k":[1,0.277999997606,0.340999977261,1],"ix":4},"o":{"a":0,"k":100,"ix":5},"r":1,"bm":0,"nm":"Fill 1","mn":"ADBE Vector Graphic - Fill","hd":false},{"ty":"tr","p":{"a":0,"k":[60.392,19.016],"ix":2},"a":{"a":0,"k":[0,0],"ix":1},"s":{"a":0,"k":[100,100],"ix":3},"r":{"a":0,"k":0,"ix":6},"o":{"a":0,"k":100,"ix":7},"sk":{"a":0,"k":0,"ix":4},"sa":{"a":0,"k":0,"ix":5},"nm":"Transform"}],"nm":"Group 4","np":2,"cix":2,"bm":0,"ix":4,"mn":"ADBE Vector Group","hd":false},{"ty":"gr","it":[{"ind":0,"ty":"sh","ix":1,"ks":{"a":0,"k":{"i":[[0,0],[-6.743,-1.371]],"o":[[0,0],[0,0]],"v":[[-6.139,-1.221],[6.139,1.221]],"c":false},"ix":2},"nm":"Path 1","mn":"ADBE Vector Shape - Group","hd":false},{"ty":"st","c":{"a":0,"k":[0.184000007779,0.20800000359,0.258999992819,1],"ix":3},"o":{"a":0,"k":100,"ix":4},"w":{"a":0,"k":3,"ix":5},"lc":1,"lj":1,"ml":10,"bm":0,"nm":"Stroke 1","mn":"ADBE Vector Graphic - Stroke","hd":false},{"ty":"tr","p":{"a":0,"k":[86.316,17.219],"ix":2},"a":{"a":0,"k":[0,0],"ix":1},"s":{"a":0,"k":[100,100],"ix":3},"r":{"a":0,"k":0,"ix":6},"o":{"a":0,"k":100,"ix":7},"sk":{"a":0,"k":0,"ix":4},"sa":{"a":0,"k":0,"ix":5},"nm":"Transform"}],"nm":"Group 5","np":2,"cix":2,"bm":0,"ix":5,"mn":"ADBE Vector Group","hd":false},{"ty":"gr","it":[{"ind":0,"ty":"sh","ix":1,"ks":{"a":0,"k":{"i":[[0,0],[-4.606,-1.211]],"o":[[7.373,1.499],[0,0]],"v":[[-8.601,-1.826],[8.601,1.826]],"c":false},"ix":2},"nm":"Path 1","mn":"ADBE Vector Shape - Group","hd":false},{"ty":"st","c":{"a":0,"k":[0.184000007779,0.20800000359,0.258999992819,1],"ix":3},"o":{"a":0,"k":100,"ix":4},"w":{"a":0,"k":5,"ix":5},"lc":2,"lj":2,"bm":0,"nm":"Stroke 1","mn":"ADBE Vector Graphic - Stroke","hd":false},{"ty":"tr","p":{"a":0,"k":[101.056,20.266],"ix":2},"a":{"a":0,"k":[0,0],"ix":1},"s":{"a":0,"k":[100,100],"ix":3},"r":{"a":0,"k":0,"ix":6},"o":{"a":0,"k":100,"ix":7},"sk":{"a":0,"k":0,"ix":4},"sa":{"a":0,"k":0,"ix":5},"nm":"Transform"}],"nm":"Group 6","np":2,"cix":2,"bm":0,"ix":6,"mn":"ADBE Vector Group","hd":false},{"ty":"gr","it":[{"ind":0,"ty":"sh","ix":1,"ks":{"a":0,"k":{"i":[[0,0],[6.743,-1.371]],"o":[[0,0],[0,0]],"v":[[6.139,-1.221],[-6.139,1.221]],"c":false},"ix":2},"nm":"Path 1","mn":"ADBE Vector Shape - Group","hd":false},{"ty":"st","c":{"a":0,"k":[0.184000007779,0.20800000359,0.258999992819,1],"ix":3},"o":{"a":0,"k":100,"ix":4},"w":{"a":0,"k":3,"ix":5},"lc":1,"lj":1,"ml":10,"bm":0,"nm":"Stroke 1","mn":"ADBE Vector Graphic - Stroke","hd":false},{"ty":"tr","p":{"a":0,"k":[35.445,17.219],"ix":2},"a":{"a":0,"k":[0,0],"ix":1},"s":{"a":0,"k":[100,100],"ix":3},"r":{"a":0,"k":0,"ix":6},"o":{"a":0,"k":100,"ix":7},"sk":{"a":0,"k":0,"ix":4},"sa":{"a":0,"k":0,"ix":5},"nm":"Transform"}],"nm":"Group 7","np":2,"cix":2,"bm":0,"ix":7,"mn":"ADBE Vector Group","hd":false},{"ty":"gr","it":[{"ind":0,"ty":"sh","ix":1,"ks":{"a":0,"k":{"i":[[0,0],[4.607,-1.211]],"o":[[-7.373,1.499],[0,0]],"v":[[8.403,-1.777],[-8.403,1.777]],"c":false},"ix":2},"nm":"Path 1","mn":"ADBE Vector Shape - Group","hd":false},{"ty":"st","c":{"a":0,"k":[0.184000007779,0.20800000359,0.258999992819,1],"ix":3},"o":{"a":0,"k":100,"ix":4},"w":{"a":0,"k":5,"ix":5},"lc":2,"lj":2,"bm":0,"nm":"Stroke 1","mn":"ADBE Vector Graphic - Stroke","hd":false},{"ty":"tr","p":{"a":0,"k":[20.903,20.217],"ix":2},"a":{"a":0,"k":[0,0],"ix":1},"s":{"a":0,"k":[100,100],"ix":3},"r":{"a":0,"k":0,"ix":6},"o":{"a":0,"k":100,"ix":7},"sk":{"a":0,"k":0,"ix":4},"sa":{"a":0,"k":0,"ix":5},"nm":"Transform"}],"nm":"Group 8","np":2,"cix":2,"bm":0,"ix":8,"mn":"ADBE Vector Group","hd":false}],"ip":0,"op":242.242242242242,"st":0,"bm":0},{"ddd":0,"ind":4,"ty":4,"nm":"scooter","parent":8,"sr":1,"ks":{"o":{"a":0,"k":100,"ix":11},"r":{"a":1,"k":[{"i":{"x":[0.2],"y":[1]},"o":{"x":[0.333],"y":[0]},"t":64.064,"s":[0]},{"i":{"x":[0.667],"y":[1]},"o":{"x":[0.333],"y":[0]},"t":116.115,"s":[50]},{"i":{"x":[0.667],"y":[1]},"o":{"x":[0.333],"y":[0]},"t":154.154,"s":[50]},{"t":206.20703125,"s":[0]}],"ix":10},"p":{"a":1,"k":[{"i":{"x":0.833,"y":0.833},"o":{"x":0.167,"y":0.167},"t":0,"s":[980.695,1145.924,0],"to":[0,0,0],"ti":[0,0,0]},{"i":{"x":0.833,"y":0.833},"o":{"x":0.167,"y":0.167},"t":84.084,"s":[980.923,927.615,0],"to":[0,0,0],"ti":[0,0,0]},{"i":{"x":0.833,"y":0.833},"o":{"x":0.167,"y":0.167},"t":182.182,"s":[1191.195,746.716,0],"to":[0,0,0],"ti":[0,0,0]},{"t":240.240234375,"s":[1190.966,624.632,0]}],"ix":2},"a":{"a":0,"k":[29.857,72.138,0],"ix":1},"s":{"a":0,"k":[56,56,100],"ix":6}},"ao":0,"shapes":[{"ty":"gr","it":[{"ind":0,"ty":"sh","ix":1,"ks":{"a":0,"k":{"i":[[0,0],[0,0],[0,0],[0,0]],"o":[[0,0],[0,0],[0,0],[0,0]],"v":[[17.176,30.894],[-17.176,30.894],[-17.176,-30.894],[17.176,-30.894]],"c":true},"ix":2},"nm":"Path 1","mn":"ADBE Vector Shape - Group","hd":false},{"ty":"fl","c":{"a":0,"k":[0.184000007779,0.20800000359,0.258999992819,1],"ix":4},"o":{"a":0,"k":100,"ix":5},"r":1,"bm":0,"nm":"Fill 1","mn":"ADBE Vector Graphic - Fill","hd":false},{"ty":"tr","p":{"a":0,"k":[29.858,31.144],"ix":2},"a":{"a":0,"k":[0,0],"ix":1},"s":{"a":0,"k":[100,100],"ix":3},"r":{"a":0,"k":0,"ix":6},"o":{"a":0,"k":100,"ix":7},"sk":{"a":0,"k":0,"ix":4},"sa":{"a":0,"k":0,"ix":5},"nm":"Transform"}],"nm":"Group 1","np":2,"cix":2,"bm":0,"ix":1,"mn":"ADBE Vector Group","hd":false},{"ty":"gr","it":[{"ind":0,"ty":"sh","ix":1,"ks":{"a":0,"k":{"i":[[5.877,0],[0,0],[0,5.877],[0,0],[-5.878,0],[0,0],[0,-5.878],[0,0]],"o":[[0,0],[-5.878,0],[0,0],[0,-5.878],[0,0],[5.877,0],[0,0],[0,5.877]],"v":[[14.07,23.797],[-14.07,23.797],[-24.712,13.155],[-24.712,-13.155],[-14.07,-23.797],[14.07,-23.797],[24.712,-13.155],[24.712,13.155]],"c":true},"ix":2},"nm":"Path 1","mn":"ADBE Vector Shape - Group","hd":false},{"ty":"st","c":{"a":0,"k":[0.184000007779,0.20800000359,0.258999992819,1],"ix":3},"o":{"a":0,"k":100,"ix":4},"w":{"a":0,"k":1,"ix":5},"lc":1,"lj":1,"ml":10,"bm":0,"nm":"Stroke 1","mn":"ADBE Vector Graphic - Stroke","hd":false},{"ty":"fl","c":{"a":0,"k":[1,1,1,1],"ix":4},"o":{"a":0,"k":100,"ix":5},"r":1,"bm":0,"nm":"Fill 1","mn":"ADBE Vector Graphic - Fill","hd":false},{"ty":"tr","p":{"a":0,"k":[29.857,120.229],"ix":2},"a":{"a":0,"k":[0,0],"ix":1},"s":{"a":0,"k":[100,100],"ix":3},"r":{"a":0,"k":0,"ix":6},"o":{"a":0,"k":100,"ix":7},"sk":{"a":0,"k":0,"ix":4},"sa":{"a":0,"k":0,"ix":5},"nm":"Transform"}],"nm":"Group 2","np":3,"cix":2,"bm":0,"ix":2,"mn":"ADBE Vector Group","hd":false},{"ty":"gr","it":[{"ind":0,"ty":"sh","ix":1,"ks":{"a":0,"k":{"i":[[0,0],[0,0],[0,0],[0,0]],"o":[[0,0],[0,0],[0,0],[0,0]],"v":[[20.17,16.628],[-20.17,16.628],[-20.17,-16.628],[20.17,-16.628]],"c":true},"ix":2},"nm":"Path 1","mn":"ADBE Vector Shape - Group","hd":false},{"ty":"st","c":{"a":0,"k":[0.184000007779,0.20800000359,0.258999992819,1],"ix":3},"o":{"a":0,"k":100,"ix":4},"w":{"a":0,"k":1,"ix":5},"lc":1,"lj":1,"ml":10,"bm":0,"nm":"Stroke 1","mn":"ADBE Vector Graphic - Stroke","hd":false},{"ty":"fl","c":{"a":0,"k":[1,1,1,1],"ix":4},"o":{"a":0,"k":100,"ix":5},"r":1,"bm":0,"nm":"Fill 1","mn":"ADBE Vector Graphic - Fill","hd":false},{"ty":"tr","p":{"a":0,"k":[29.858,92.581],"ix":2},"a":{"a":0,"k":[0,0],"ix":1},"s":{"a":0,"k":[100,100],"ix":3},"r":{"a":0,"k":0,"ix":6},"o":{"a":0,"k":100,"ix":7},"sk":{"a":0,"k":0,"ix":4},"sa":{"a":0,"k":0,"ix":5},"nm":"Transform"}],"nm":"Group 3","np":3,"cix":2,"bm":0,"ix":3,"mn":"ADBE Vector Group","hd":false},{"ty":"gr","it":[{"ind":0,"ty":"sh","ix":1,"ks":{"a":0,"k":{"i":[[10.531,0],[0,0],[0,10.53],[0,0],[-10.53,0],[0,0],[0,-10.531],[0,0]],"o":[[0,0],[-10.53,0],[0,0],[0,-10.531],[0,0],[10.531,0],[0,0],[0,10.53]],"v":[[10.54,27.256],[-10.54,27.256],[-29.607,8.189],[-29.607,-8.188],[-10.54,-27.256],[10.54,-27.256],[29.607,-8.188],[29.607,8.189]],"c":true},"ix":2},"nm":"Path 1","mn":"ADBE Vector Shape - Group","hd":false},{"ty":"fl","c":{"a":0,"k":[1,0.277999997606,0.340999977261,1],"ix":4},"o":{"a":0,"k":100,"ix":5},"r":1,"bm":0,"nm":"Fill 1","mn":"ADBE Vector Graphic - Fill","hd":false},{"ty":"tr","p":{"a":0,"k":[29.857,109.208],"ix":2},"a":{"a":0,"k":[0,0],"ix":1},"s":{"a":0,"k":[100,100],"ix":3},"r":{"a":0,"k":0,"ix":6},"o":{"a":0,"k":100,"ix":7},"sk":{"a":0,"k":0,"ix":4},"sa":{"a":0,"k":0,"ix":5},"nm":"Transform"}],"nm":"Group 4","np":2,"cix":2,"bm":0,"ix":4,"mn":"ADBE Vector Group","hd":false}],"ip":0,"op":242.242242242242,"st":0,"bm":0},{"ddd":0,"ind":5,"ty":4,"nm":"front wheel","parent":4,"sr":1,"ks":{"o":{"a":0,"k":100,"ix":11},"r":{"a":1,"k":[{"i":{"x":[0.667],"y":[1]},"o":{"x":[0.333],"y":[0]},"t":59,"s":[0]},{"i":{"x":[0.667],"y":[1]},"o":{"x":[0.333],"y":[0]},"t":72,"s":[18]},{"i":{"x":[0.667],"y":[1]},"o":{"x":[0.333],"y":[0]},"t":86,"s":[18]},{"i":{"x":[0.667],"y":[1]},"o":{"x":[0.296],"y":[0]},"t":101,"s":[0]},{"i":{"x":[0.667],"y":[1]},"o":{"x":[0.333],"y":[0]},"t":149,"s":[0]},{"i":{"x":[0.667],"y":[1]},"o":{"x":[0.333],"y":[0]},"t":162,"s":[-18]},{"i":{"x":[0.667],"y":[1]},"o":{"x":[0.333],"y":[0]},"t":176,"s":[-18]},{"t":191,"s":[0]}],"ix":10},"p":{"a":0,"k":[29.41,-10.094,0],"ix":2},"a":{"a":0,"k":[7.811,29.353,0],"ix":1},"s":{"a":0,"k":[100,100,100],"ix":6}},"ao":0,"shapes":[{"ty":"gr","it":[{"ind":0,"ty":"sh","ix":1,"ks":{"a":0,"k":{"i":[[3.995,0],[0,0],[0,-3.995],[0,0],[-3.96,0],[0,0],[0,3.959],[0,0]],"o":[[0,0],[-3.995,0],[0,0],[0,3.959],[0,0],[3.959,0],[0,0],[0,-3.995]],"v":[[0.775,-15.754],[-0.773,-15.754],[-8.008,-8.521],[-8.008,8.585],[-0.838,15.754],[0.839,15.754],[8.008,8.585],[8.008,-8.521]],"c":true},"ix":2},"nm":"Path 1","mn":"ADBE Vector Shape - Group","hd":false},{"ty":"fl","c":{"a":0,"k":[1,0.277999997606,0.340999977261,1],"ix":4},"o":{"a":0,"k":100,"ix":5},"r":1,"bm":0,"nm":"Fill 1","mn":"ADBE Vector Graphic - Fill","hd":false},{"ty":"tr","p":{"a":0,"k":[8.257,28.416],"ix":2},"a":{"a":0,"k":[0,0],"ix":1},"s":{"a":0,"k":[100,100],"ix":3},"r":{"a":0,"k":0,"ix":6},"o":{"a":0,"k":100,"ix":7},"sk":{"a":0,"k":0,"ix":4},"sa":{"a":0,"k":0,"ix":5},"nm":"Transform"}],"nm":"Group 1","np":2,"cix":2,"bm":0,"ix":1,"mn":"ADBE Vector Group","hd":false},{"ty":"gr","it":[{"ind":0,"ty":"sh","ix":1,"ks":{"a":0,"k":{"i":[[3.436,0],[0,0],[0,3.435],[0,0],[-3.435,0],[0,-3.436],[0,0]],"o":[[0,0],[-3.435,0],[0,0],[0,-3.436],[3.436,0],[0,0],[0,3.435]],"v":[[0,14.538],[0,14.538],[-6.22,8.318],[-6.22,-8.317],[0,-14.538],[6.22,-8.317],[6.22,8.318]],"c":true},"ix":2},"nm":"Path 1","mn":"ADBE Vector Shape - Group","hd":false},{"ty":"fl","c":{"a":0,"k":[0.184000007779,0.20800000359,0.258999992819,1],"ix":4},"o":{"a":0,"k":100,"ix":5},"r":1,"bm":0,"nm":"Fill 1","mn":"ADBE Vector Graphic - Fill","hd":false},{"ty":"tr","p":{"a":0,"k":[8.258,14.788],"ix":2},"a":{"a":0,"k":[0,0],"ix":1},"s":{"a":0,"k":[100,100],"ix":3},"r":{"a":0,"k":0,"ix":6},"o":{"a":0,"k":100,"ix":7},"sk":{"a":0,"k":0,"ix":4},"sa":{"a":0,"k":0,"ix":5},"nm":"Transform"}],"nm":"Group 2","np":2,"cix":2,"bm":0,"ix":2,"mn":"ADBE Vector Group","hd":false}],"ip":0,"op":242.242242242242,"st":0,"bm":0},{"ddd":0,"ind":6,"ty":4,"nm":"feather gradient","sr":1,"ks":{"o":{"a":0,"k":100,"ix":11},"r":{"a":0,"k":0,"ix":10},"p":{"a":0,"k":[150,150,0],"ix":2},"a":{"a":0,"k":[0,0,0],"ix":1},"s":{"a":0,"k":[107,107,100],"ix":6}},"ao":0,"shapes":[{"ty":"gr","it":[{"ty":"rc","d":1,"s":{"a":0,"k":[302,300],"ix":2},"p":{"a":0,"k":[0,0],"ix":3},"r":{"a":0,"k":0,"ix":4},"nm":"Rectangle Path 1","mn":"ADBE Vector Shape - Rect","hd":false},{"ty":"st","c":{"a":0,"k":[0.156862999411,0.156862999411,0.156862999411,1],"ix":3},"o":{"a":0,"k":100,"ix":4},"w":{"a":0,"k":1.5,"ix":5},"lc":1,"lj":1,"ml":4,"bm":0,"nm":"Stroke 1","mn":"ADBE Vector Graphic - Stroke","hd":false},{"ty":"gf","o":{"a":0,"k":100,"ix":10},"r":1,"bm":0,"g":{"p":3,"k":{"a":0,"k":[0.318,1,1,1,0.754,1,1,1,1,1,1,1,0.325,0,0.775,0.5,1,1],"ix":9}},"s":{"a":0,"k":[0,0],"ix":5},"e":{"a":0,"k":[151,0.5],"ix":6},"t":2,"h":{"a":0,"k":0,"ix":7},"a":{"a":0,"k":0,"ix":8},"nm":"Gradient Fill 1","mn":"ADBE Vector Graphic - G-Fill","hd":false},{"ty":"tr","p":{"a":0,"k":[0,-1],"ix":2},"a":{"a":0,"k":[0,0],"ix":1},"s":{"a":0,"k":[100,100],"ix":3},"r":{"a":0,"k":0,"ix":6},"o":{"a":0,"k":100,"ix":7},"sk":{"a":0,"k":0,"ix":4},"sa":{"a":0,"k":0,"ix":5},"nm":"Transform"}],"nm":"Rectangle 1","np":3,"cix":2,"bm":0,"ix":1,"mn":"ADBE Vector Group","hd":false}],"ip":0,"op":242.242242242242,"st":0,"bm":0},{"ddd":0,"ind":8,"ty":0,"nm":"street","refId":"comp_0","sr":1,"ks":{"o":{"a":0,"k":20,"ix":11},"r":{"a":0,"k":0,"ix":10},"p":{"a":1,"k":[{"i":{"x":0.565,"y":0.565},"o":{"x":0.167,"y":0.167},"t":0,"s":[170.5,15,0],"to":[0,0,0],"ti":[0,0,0]},{"i":{"x":0.696,"y":0.696},"o":{"x":0.333,"y":0.333},"t":83.928,"s":[170.5,235,0],"to":[0,0,0],"ti":[0,0,0]},{"i":{"x":0.833,"y":0.833},"o":{"x":0.432,"y":0.432},"t":183.158,"s":[-40.479,387.13,0],"to":[0,0,0],"ti":[0,0,0]},{"t":240.240234375,"s":[-39.75,536.75,0]}],"ix":2},"a":{"a":0,"k":[1000,1000,0],"ix":1},"s":{"a":0,"k":[100,100,100],"ix":6}},"ao":0,"w":2000,"h":2000,"ip":0,"op":242.242242242242,"st":0,"bm":0}],"markers":[]}
+</file>
+
+<file path="client/src/assets/react.svg">
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" aria-hidden="true" role="img" class="iconify iconify--logos" width="35.93" height="32" preserveAspectRatio="xMidYMid meet" viewBox="0 0 256 228"><path fill="#00D8FF" d="M210.483 73.824a171.49 171.49 0 0 0-8.24-2.597c.465-1.9.893-3.777 1.273-5.621c6.238-30.281 2.16-54.676-11.769-62.708c-13.355-7.7-35.196.329-57.254 19.526a171.23 171.23 0 0 0-6.375 5.848a155.866 155.866 0 0 0-4.241-3.917C100.759 3.829 77.587-4.822 63.673 3.233C50.33 10.957 46.379 33.89 51.995 62.588a170.974 170.974 0 0 0 1.892 8.48c-3.28.932-6.445 1.924-9.474 2.98C17.309 83.498 0 98.307 0 113.668c0 15.865 18.582 31.778 46.812 41.427a145.52 145.52 0 0 0 6.921 2.165a167.467 167.467 0 0 0-2.01 9.138c-5.354 28.2-1.173 50.591 12.134 58.266c13.744 7.926 36.812-.22 59.273-19.855a145.567 145.567 0 0 0 5.342-4.923a168.064 168.064 0 0 0 6.92 6.314c21.758 18.722 43.246 26.282 56.54 18.586c13.731-7.949 18.194-32.003 12.4-61.268a145.016 145.016 0 0 0-1.535-6.842c1.62-.48 3.21-.974 4.76-1.488c29.348-9.723 48.443-25.443 48.443-41.52c0-15.417-17.868-30.326-45.517-39.844Zm-6.365 70.984c-1.4.463-2.836.91-4.3 1.345c-3.24-10.257-7.612-21.163-12.963-32.432c5.106-11 9.31-21.767 12.459-31.957c2.619.758 5.16 1.557 7.61 2.4c23.69 8.156 38.14 20.213 38.14 29.504c0 9.896-15.606 22.743-40.946 31.14Zm-10.514 20.834c2.562 12.94 2.927 24.64 1.23 33.787c-1.524 8.219-4.59 13.698-8.382 15.893c-8.067 4.67-25.32-1.4-43.927-17.412a156.726 156.726 0 0 1-6.437-5.87c7.214-7.889 14.423-17.06 21.459-27.246c12.376-1.098 24.068-2.894 34.671-5.345a134.17 134.17 0 0 1 1.386 6.193ZM87.276 214.515c-7.882 2.783-14.16 2.863-17.955.675c-8.075-4.657-11.432-22.636-6.853-46.752a156.923 156.923 0 0 1 1.869-8.499c10.486 2.32 22.093 3.988 34.498 4.994c7.084 9.967 14.501 19.128 21.976 27.15a134.668 134.668 0 0 1-4.877 4.492c-9.933 8.682-19.886 14.842-28.658 17.94ZM50.35 144.747c-12.483-4.267-22.792-9.812-29.858-15.863c-6.35-5.437-9.555-10.836-9.555-15.216c0-9.322 13.897-21.212 37.076-29.293c2.813-.98 5.757-1.905 8.812-2.773c3.204 10.42 7.406 21.315 12.477 32.332c-5.137 11.18-9.399 22.249-12.634 32.792a134.718 134.718 0 0 1-6.318-1.979Zm12.378-84.26c-4.811-24.587-1.616-43.134 6.425-47.789c8.564-4.958 27.502 2.111 47.463 19.835a144.318 144.318 0 0 1 3.841 3.545c-7.438 7.987-14.787 17.08-21.808 26.988c-12.04 1.116-23.565 2.908-34.161 5.309a160.342 160.342 0 0 1-1.76-7.887Zm110.427 27.268a347.8 347.8 0 0 0-7.785-12.803c8.168 1.033 15.994 2.404 23.343 4.08c-2.206 7.072-4.956 14.465-8.193 22.045a381.151 381.151 0 0 0-7.365-13.322Zm-45.032-43.861c5.044 5.465 10.096 11.566 15.065 18.186a322.04 322.04 0 0 0-30.257-.006c4.974-6.559 10.069-12.652 15.192-18.18ZM82.802 87.83a323.167 323.167 0 0 0-7.227 13.238c-3.184-7.553-5.909-14.98-8.134-22.152c7.304-1.634 15.093-2.97 23.209-3.984a321.524 321.524 0 0 0-7.848 12.897Zm8.081 65.352c-8.385-.936-16.291-2.203-23.593-3.793c2.26-7.3 5.045-14.885 8.298-22.6a321.187 321.187 0 0 0 7.257 13.246c2.594 4.48 5.28 8.868 8.038 13.147Zm37.542 31.03c-5.184-5.592-10.354-11.779-15.403-18.433c4.902.192 9.899.29 14.978.29c5.218 0 10.376-.117 15.453-.343c-4.985 6.774-10.018 12.97-15.028 18.486Zm52.198-57.817c3.422 7.8 6.306 15.345 8.596 22.52c-7.422 1.694-15.436 3.058-23.88 4.071a382.417 382.417 0 0 0 7.859-13.026a347.403 347.403 0 0 0 7.425-13.565Zm-16.898 8.101a358.557 358.557 0 0 1-12.281 19.815a329.4 329.4 0 0 1-23.444.823c-7.967 0-15.716-.248-23.178-.732a310.202 310.202 0 0 1-12.513-19.846h.001a307.41 307.41 0 0 1-10.923-20.627a310.278 310.278 0 0 1 10.89-20.637l-.001.001a307.318 307.318 0 0 1 12.413-19.761c7.613-.576 15.42-.876 23.31-.876H128c7.926 0 15.743.303 23.354.883a329.357 329.357 0 0 1 12.335 19.695a358.489 358.489 0 0 1 11.036 20.54a329.472 329.472 0 0 1-11 20.722Zm22.56-122.124c8.572 4.944 11.906 24.881 6.52 51.026c-.344 1.668-.73 3.367-1.15 5.09c-10.622-2.452-22.155-4.275-34.23-5.408c-7.034-10.017-14.323-19.124-21.64-27.008a160.789 160.789 0 0 1 5.888-5.4c18.9-16.447 36.564-22.941 44.612-18.3ZM128 90.808c12.625 0 22.86 10.235 22.86 22.86s-10.235 22.86-22.86 22.86s-22.86-10.235-22.86-22.86s10.235-22.86 22.86-22.86Z"></path></svg>
+</file>
+
+<file path="client/src/main.jsx">
+import { StrictMode } from 'react'
+import { createRoot } from 'react-dom/client'
+import './index.css'
+import App from './App.jsx'
+
+createRoot(document.getElementById('root')).render(
+  <StrictMode>
+    <App />
+  </StrictMode>,
+)
+</file>
+
+<file path="server/.gitignore">
+# Created by https://www.toptal.com/developers/gitignore/api/node,database,react
+# Edit at https://www.toptal.com/developers/gitignore?templates=node,database,react
+
+### Database ###
+*.accdb
+*.db
+*.dbf
+*.mdb
+*.pdb
+*.sqlite3
+*.db-shm
+*.db-wal
+
+### Node ###
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+.pnpm-debug.log*
+
+# Diagnostic reports (https://nodejs.org/api/report.html)
+report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Directory for instrumented libs generated by jscoverage/JSCover
+lib-cov
+
+# Coverage directory used by tools like istanbul
+coverage
+*.lcov
+
+# nyc test coverage
+.nyc_output
+
+# Grunt intermediate storage (https://gruntjs.com/creating-plugins#storing-task-files)
+.grunt
+
+# Bower dependency directory (https://bower.io/)
+bower_components
+
+# node-waf configuration
+.lock-wscript
+
+# Compiled binary addons (https://nodejs.org/api/addons.html)
+build/Release
+
+# Dependency directories
+node_modules/
+jspm_packages/
+
+# Snowpack dependency directory (https://snowpack.dev/)
+web_modules/
+
+# TypeScript cache
+*.tsbuildinfo
+
+# Optional npm cache directory
+.npm
+
+# Optional eslint cache
+.eslintcache
+
+# Optional stylelint cache
+.stylelintcache
+
+# Microbundle cache
+.rpt2_cache/
+.rts2_cache_cjs/
+.rts2_cache_es/
+.rts2_cache_umd/
+
+# Optional REPL history
+.node_repl_history
+
+# Output of 'npm pack'
+*.tgz
+
+# Yarn Integrity file
+.yarn-integrity
+
+# dotenv environment variable files
+.env
+.env.development.local
+.env.test.local
+.env.production.local
+.env.local
+
+# parcel-bundler cache (https://parceljs.org/)
+.cache
+.parcel-cache
+
+# Next.js build output
+.next
+out
+
+# Nuxt.js build / generate output
+.nuxt
+dist
+
+# Gatsby files
+.cache/
+# Comment in the public line in if your project uses Gatsby and not Next.js
+# https://nextjs.org/blog/next-9-1#public-directory-support
+# public
+
+# vuepress build output
+.vuepress/dist
+
+# vuepress v2.x temp and cache directory
+.temp
+
+# Docusaurus cache and generated files
+.docusaurus
+
+# Serverless directories
+.serverless/
+
+# FuseBox cache
+.fusebox/
+
+# DynamoDB Local files
+.dynamodb/
+
+# TernJS port file
+.tern-port
+
+# Stores VSCode versions used for testing VSCode extensions
+.vscode-test
+
+# yarn v2
+.yarn/cache
+.yarn/unplugged
+.yarn/build-state.yml
+.yarn/install-state.gz
+.pnp.*
+
+### Node Patch ###
+# Serverless Webpack directories
+.webpack/
+
+# Optional stylelint cache
+
+# SvelteKit build / generate output
+.svelte-kit
+
+### react ###
+.DS_*
+**/*.backup.*
+**/*.back.*
+
+node_modules
+
+*.sublime*
+
+psd
+thumb
+sketch
+
+# End of https://www.toptal.com/developers/gitignore/api/node,database,react
+</file>
+
+<file path="server/models/User.js">
+const mongoose = require('mongoose');
+
+const userSchema = new mongoose.Schema({
+    userId: {
+        type: String,
+        required: true,
+        unique: true
+    },
+    name: {
+        type: String,
+        required: true
+    },
+    coordinates: {
+        lat: {
+            type: Number,
+            required: true
+        },
+        lng: {
+            type: Number,
+            required: true
+        }
+    }
+});
+
+const User = mongoose.model('User', userSchema);
+
+module.exports = User;
+</file>
+
+<file path="server/routes/locationRoute.js">
+const express = require('express');
+const { updateLocation, getAllUsers, getRoute } = require('../controllers/locationcontroller');
+const router = express.Router();
+
+router.post('/update', updateLocation);
+router.get('/users', getAllUsers);
+router.post('/route', getRoute);
+
+module.exports = router;
+</file>
+
+<file path="client/vite.config.js">
+import { defineConfig } from 'vite'
+import react from '@vitejs/plugin-react'
+import tailwindcss from '@tailwindcss/vite'
+// https://vite.dev/config/
+export default defineConfig({
+  plugins: [react(),tailwindcss()],
+})
+</file>
+
+<file path="client/package.json">
+{
+  "name": "client",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "lint": "eslint .",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@lottiefiles/dotlottie-react": "^0.15.2",
+    "@tailwindcss/vite": "^4.1.12",
+    "axios": "^1.11.0",
+    "lottie-react": "^2.4.1",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1",
+    "react-icons": "^5.5.0",
+    "react-leaflet": "^5.0.0",
+    "socket.io-client": "^4.8.1",
+    "tailwindcss": "^4.1.12"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.33.0",
+    "@types/react": "^19.1.10",
+    "@types/react-dom": "^19.1.7",
+    "@vitejs/plugin-react": "^5.0.0",
+    "eslint": "^9.33.0",
+    "eslint-plugin-react-hooks": "^5.2.0",
+    "eslint-plugin-react-refresh": "^0.4.20",
+    "globals": "^16.3.0",
+    "vite": "^7.1.2"
+  }
+}
+</file>
+
+<file path="client/src/index.css">
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;700&display=swap');
+@import "tailwindcss";
+
+body {
+  font-family: 'Poppins', sans-serif;
+}
+</file>
+
+<file path="client/src/socket.js">
+import { io } from "socket.io-client";
+
+const socket=io(`http://localhost:4000`);//frontend socket connection with backend server.io
+
+export const joinRoom=(roomId)=>{//Frontend se backend ko event bhej rahe ho (joinRoom), taki user ek particular room me join ho jaye.
+    socket.emit("joinRoom",roomId);
+}
+
+export const emitLocationUpdate=(data)=>{//Frontend apna location data backend ko bhejta hai.
+    socket.emit("locationUpdate",data);
+}
+
+export const listenforUsersUpdates=(callback)=>{//Frontend backend ke events sunega (jaise koi user offline hua).
+    socket.on("user-offline", (data) => {
+        callback(data); //callback(data) → is case mein callback setusers hai, jo React ka state updater hai → iska matlab UI ko turant update kar do latest users list ke saath.
+    });
+}
+
+export default socket;
+</file>
+
+<file path="server/controllers/locationcontroller.js">
+const axios = require('axios');
+const User = require('../models/User');
+
+exports.updateLocation = async (req, res) => {
+    const { userId, lat, lng } = req.body;
+
+    try {
+        const user = await User.findByIdAndUpdate(userId, { lat, lng }, { new: true });
+        res.status(200).json(user);
+    } catch (error) {
+        res.status(500).json({ message: 'Error updating location', error });
+    }
+};
+
+// Get all users
+exports.getAllUsers = async (req, res) => {
+    try {
+        const users = await User.find();
+        res.status(200).json(users);
+    } catch (error) {
+        res.status(500).json({ message: 'Error fetching users', error });
+    }
+};
+
+
+//CALCULATING THE DISTANCE AND DURATION
+exports.calculateDistanceAndETA = async (origin, destination, mode = 'car') => {
+    const apikey = process.env.ORS_api_key;
+
+    // profile select car/walk ke liye
+    let profile;
+    if (mode === 'car') profile = 'driving-car';
+    else if (mode === 'walk') profile = 'foot-walking';
+    else throw new Error("Invalid mode! Use 'car' or 'walk'.");
+
+    // API endpoint
+    const url = `https://api.openrouteservice.org/v2/matrix/${profile}`;
+
+    try {
+        const response = await axios.post(url, {
+            locations: [
+                [origin.lng, origin.lat],                // origin
+                [destinatison.lng, destination.lat]       // destination
+            ],
+            metrics: ['distance', 'duration'],          // kya chahiye
+            units: 'km'                                 // distance km me
+        }, {
+            headers: {
+                'Authorization': apikey,                  // API key
+                'Content-Type': 'application/json'
+            }
+        });
+
+        const distance = response.data.distances[0][1]; // km
+        const duration = response.data.durations[0][1]; // seconds
+
+        return {
+            mode, // car ya walking
+            distance: `${distance.toFixed(2)} km`,
+            duration: `${Math.round(duration / 60)} mins` // mins
+        };
+
+    } catch (error) {
+        console.error('Error in calculateDistanceAndETA:', error);
+        throw error;
+    }
+};
+
+
+exports.getRoute = async (req, res) => {
+    const { start, end, mode } = req.body;
+    const apikey = process.env.ORS_api_key;
+
+    let profile;
+    if (mode === 'car') profile = 'driving-car';
+    else if (mode === 'walk') profile = 'foot-walking';
+    // else return res.status(400).json({ error: "Invalid mode! Use 'car' or 'walk'." });
+    else{
+        profile = 'driving-car'; // default to car if invalid mode
+        console.warn("Invalid mode provided. Defaulting to 'car'.");
+    }
+
+    // Correct Directions API
+    const url = `https://api.openrouteservice.org/v2/directions/${profile}/geojson`;
+
+    try {
+        const response = await axios.post(url, {
+            coordinates: [
+                [start.lng, start.lat],
+                [end.lng, end.lat]
+            ]
+        }, {
+            headers: {
+                'Authorization': apikey,
+                'Content-Type': 'application/json'
+            }
+        });
+
+        res.json({
+            route: response.data, // full geojson route
+        });
+
+    } catch (error) {
+        console.error('Error getting route:', error.response?.data || error.message);
+        res.status(500).json({ error: 'Failed to get route' });
+    }
+};
+</file>
+
+<file path="server/package.json">
+{
+  "name": "server",
+  "version": "1.0.0",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "nodemon server.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "axios": "^1.11.0",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.1",
+    "express": "^5.1.0",
+    "mongoose": "^8.18.0",
+    "nodemon": "^3.1.10",
+    "router": "^2.2.0",
+    "socket.io": "^4.8.1"
+  }
+}
+</file>
+
+<file path="server/socketHandlers.js">
+const { Socket } = require("socket.io");
+
+let roomUsers={};
+//roomUsers ek object hai jisme har room ke andar kaunsa user hai aur unki location store hogi.
+// {
+//   "room1": {
+//      "socketId1": { lat: 23.45, lng: 77.11 },
+//      "socketId2": { lat: 22.11, lng: 78.44 }
+//   },
+//   "room2": {
+//      "socketId3": { lat: 19.07, lng: 72.87 }
+//   }
+// }
+
+const handleSocketConnection=(socket,io)=>{//Jab bhi koi naya client connect hota hai to ye function chalega.
+
+    console.log('A user connected:',socket?.id);
+
+    socket.on('joinRoom',(roomId)=>{
+        socket.join(roomId); // is user ko ek specific room me daal diya
+        socket.roomId=roomId; //set the roomId on the socket object for later use
+        
+        if(!roomUsers[roomId]){
+            roomUsers[roomId]={}; //if room doesn't exist , create a empty object
+        }
+        roomUsers[roomId][socket.id]={}; // room ke andar user ko add kar diya
+
+
+    });
+
+    socket.on('locationUpdate',async(data) => {
+
+        const {lat,lng,mode}=data;
+        const roomId=socket.roomId;
+
+        if(!roomId) return ;
+
+        roomUsers[roomId][socket.id]={lat,lng}; //update the location of user
+
+        const users = roomUsers[roomId]; // define users variable
+
+
+        //Calculate distance and ETA(estimated time of arrival) for all Room users
+        const updatedUsers = await Promise.all(
+            Object.keys(users).map(async (id) => {
+                //har ek user ka har ek user se distance or time niklega ->just like smjho cross join kar rahe hai 
+                let distance = null, duration = null;
+                // Find the "me" user for each client
+                if (users[socket.id] && users[id] && id !== socket.id) {
+                    try {
+                        const result = await calculateDistanceAndETA(users[id], users[socket.id], mode || 'car'); // mode support added
+                        distance = result.distance;
+                        duration = result.duration;
+                    } catch {
+                        distance = 'N/A';
+                        duration = 'N/A';
+                    }
+                }
+                return {
+                    userId: id,
+                    lat: users[id]?.lat,
+                    lng: users[id]?.lng,
+                    distance,
+                    eta: duration,
+                };
+            })
+            
+        );
+
+        io.to(roomId)//Ye socket.io ka function hai jo sirf ek particular room me message bhejta hai.
+        .emit('locationUpdate', updatedUsers);
+     
+    });
+
+    socket.on('disconnect', () => {
+        const roomId = socket.roomId; // Get the room the socket was part of
+
+        // If the room exists and has users
+        if (roomId && roomUsers[roomId]) {
+            // Remove the disconnected user from the room
+            delete roomUsers[roomId][socket.id];
+
+            // Prepare updated list of active users in the room
+            const updatedUsers = Object.keys(roomUsers[roomId]).map(id => ({
+                userId: id, // add socket id
+                ...roomUsers[roomId][id]  // spread other user details
+            }));
+
+            // Notify all users in the room that someone went offline
+            io.to(roomId).emit('user-offline', updatedUsers);
+
+            // If no users left in the room, clean up the room entry
+            if (updatedUsers.length === 0) {
+                delete roomUsers[roomId];
+            }
+        }
+    });
+
+}
+
+module.exports={handleSocketConnection};
+</file>
+
+<file path="client/src/App.jsx">
+import { useEffect, useState } from 'react'; 
+import React from 'react'; 
+import Lottie from "lottie-react"; 
+import deliveryAnimation from './assets/Delivery.json';  
+import socket,{listenforUsersUpdates, emitLocationUpdate, joinRoom } from './socket'; 
+import Map from './components/Map'; 
+import Sidebar from './components/Sidebar'; 
+import UserCard from './components/UserCard'; 
+import axios from 'axios'    
+
+const getRoomIdfromURL = () => {      
+    const match = window.location.pathname.match(/\/room\/([a-zA-Z0-9_-]+)/); //Gives the path part of the current page’s URL (without domain and query params).     
+    // https://example.com/room/abcd1234     
+    // then window.location.pathname will give // "/room/abcd1234"      
+    return match ? match[1] : null;     
+    // "/room/abcd1234".match(/\/room\/([a-zA-Z0-9_-]+)/); -> it will give ["/room/abcd1234", "abcd1234"] this as answer , and we will take the match[1] i.e 2nd element from here   
+};   
+
+function App() {      
+    const [users,setusers]=useState({}); // default as empty object     
+    const [selectedUser, setSelectedUser] = useState(null);      
+
+    const [roomId, setRoomId] = useState(getRoomIdfromURL() || "");     
+    console.log('roomId:',roomId);      
+
+    const [roomInput, setRoomInput] = useState('');//input from frontend ui     
+    const [copied, setCopied] = useState(false);     
+    const [windowWidth, setWindowWidth] = useState(window.innerWidth);      
+
+    console.log('windowWidth:',windowWidth);      
+
+    const [isSidebarOpen, setIsSidebarOpen] = useState(window.innerWidth >= 768);     
+    const [route, setRoute] = useState(null);     
+    const [loadingRoute, setLoadingRoute] = useState(false);      
+
+    // Track my location separately (so we can include it in usersWithMe)     
+    const [myLocation, setMyLocation] = useState(null);       
+
+    const handleCreateRoom = (e) => {          
+        e.preventDefault();         
+        if (roomInput.trim()) {             
+            window.location.pathname = `/room/${encodeURIComponent(roomInput.trim())}`;//Ensures that the room name is safe to use in a URL. ,             
+            //  space vagera ya fir special character vagera hoga tooh unko %20 ya fir kuch aur kar karke url valid kar dega ye         
+        }      
+    };      
+
+    useEffect(()=>{        
+        //Adding the user to the room       
+        const currentRoomId=getRoomIdfromURL();       
+        if(!currentRoomId) return ;       
+        setRoomId(currentRoomId);       
+        joinRoom(currentRoomId); //socket.js se milega , vaha pr create kiya hai ye         
+
+        //Location        
+        if(!navigator.geolocation){//location not supported ->send alert         
+            alert('Geolocation is not supported by your browser');         
+            return ;       
+        }         
+
+        const handleLocation=(position)=>{//send the lat and lng to the sockethandler to calculate the distance,eta and the route         
+            const {latitude,longitude}=position.coords;         
+            setMyLocation({ lat: latitude, lng: longitude }); // store my location locally         
+            emitLocationUpdate({lat:latitude,lng:longitude}); //socket.js mai create kiya hai , emitLocationUpdate se hum location bhej denge , aur socketHandler.js usko get kar lega        
+        }              
+
+        const handleError=(error)=>{//permission denied then , we cannot use the website         
+            alert('Location Permission Denied.Please allow location Access!');       
+        }               
+
+        const watchId = navigator.geolocation.watchPosition(handleLocation,handleError,{//getcurrentposition         
+            enableHighAccuracy:true,         
+            maximumAge:0, //not storing any cache          
+            timeout:6000,//maximum time (in ms) the browser will wait to get a location fix before throwing an error.       
+        })        
+
+        listenforUsersUpdates(setusers)        
+
+        return()=>{         
+            socket.off('user-offline');         
+            navigator.geolocation.clearWatch(watchId);       
+        }       
+    },[window.location.pathname])       
+
+    useEffect(() => {         
+        const fetchRoute = async () => {             
+            if (!selectedUser) {                 
+                setRoute(null);                 
+                setLoadingRoute(false);                 
+                return;             
+            }             
+            const me = users[socket.id]; 
+            if (!me) return;             
+            setLoadingRoute(true);             
+            try {         
+                const API_BASE = process.env.REACT_APP_API_URL || "http://localhost:4000";       
+                const res = await axios.post(`${API_BASE}/api/locations/route`, {                     
+                    start: { lat: me.lat, lng: me.lng },                     
+                    end: { lat: selectedUser.lat, lng: selectedUser.lng }                 
+                });                 
+                setRoute(res.data);             
+            }catch (err) {
+            console.error("Route fetch error:", err.response?.data || err.message);
+            setRoute(null);
+            }
+                
+            setLoadingRoute(false);         
+        };         
+        fetchRoute();     
+    }, [selectedUser, users]);      
+
+    // ✅ FIX: remove duplicate usersWithMe definition (keep only this object merge)   
+    const usersWithMe = {         
+        ...users,         
+        ...(myLocation ? { [socket.id]: { lat: myLocation.lat, lng: myLocation.lng, userId: socket.id, name: "Me" } } : {})     
+    };       
+
+
+    //LANDING PAGE     
+    if (!roomId) {         
+        return (             
+            <div className="min-h-screen flex flex-col bg-gradient-to-br from-blue-50 to-white text-gray-800">                  
+
+                {/* Header */}                 
+                <header className="w-full bg-white shadow-md py-4 px-6 flex justify-between items-center">                     
+                    <h1 className="text-2xl font-bold text-blue-600">SpotSync</h1>                     
+                    <nav className="hidden md:flex space-x-6 text-gray-600 font-medium">                         
+                        {/* <a href="#home" className="hover:text-blue-600">Home</a>                         
+                        <a href="#room" className="hover:text-blue-600">Join Room</a>                         
+                        <a href="#help" className="hover:text-blue-600">Help</a> */}                     
+                    </nav>                 
+                </header>                  
+
+                {/* Hero Section */}                 
+                <main className="flex-grow flex flex-col lg:flex-row items-center justify-between px-4 sm:px-6 py-12 sm:py-16 max-w-7xl mx-auto gap-8 sm:gap-12">                     
+                    {/* Text and Form */}                     
+                    <div className="w-full lg:w-1/2 space-y-6 sm:space-y-8">                          
+
+                        <h2 className="text-3xl sm:text-4xl md:text-5xl font-extrabold leading-tight text-center lg:text-left">                             
+                            Coordinate with Friends & Family <br />                             
+                            <span className="text-blue-600">In Real Time</span>                         
+                        </h2>                                                  
+
+                        <p className="text-gray-600 text-base sm:text-lg text-center lg:text-left">                             
+                            Create a private room to share your live location. See how far away everyone is, find your way back to the group, and stay connected effortlessly.                         
+                        </p>                           
+
+                        {/* Form */}                         
+                        <form onSubmit={handleCreateRoom} className="flex flex-col sm:flex-row gap-4">                             
+                            <input                                 
+                                type="text"                                 
+                                value={roomInput}                                 
+                                onChange={(e) => setRoomInput(e.target.value)}                                 
+                                placeholder="Enter a unique room name"                                 
+                                className="flex-1 px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500"                                 
+                                required                             
+                            />                             
+                            <button                                 
+                                type="submit"                                 
+                                className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg transition duration-300"                             
+                            >                                 
+                                Join Room                             
+                            </button>                         
+                        </form>                     
+                    </div>                      
+
+                    {/* Lottie Animation */}                     
+                    <div className="w-80 h-80 sm:w-80 sm:h-80 md:w-96 md:h-96 lg:w-1/3 lg:h-1/3 rounded-full overflow-hidden flex items-center justify-center">                         
+                        <Lottie animationData={deliveryAnimation} loop={true} />                     
+                    </div>                 
+                </main>             
+            </div>         
+        );     
+    }        
+
+    // Creates a shareable room link     
+    const roomUrl = `${window.location.origin}/room/${encodeURIComponent(roomId)}`;       
+
+    //INSIDE THE ROOM     
+    return (         
+        <div className="relative flex flex-col h-screen overflow-hidden">             
+            {/* Top Bar */}             
+            <div className="sticky top-0 z-30 bg-blue-500 p-2 text-white shadow-lg">                 
+                <div className="flex flex-col md:flex-row items-center justify-between ">                     
+                    <div className="flex items-center w-full md:w-auto">                         
+                        {/* For mobile view Side Bar */}                         
+                        {windowWidth < 768 && !isSidebarOpen && (                             
+                            <button                                 
+                                className="md:hidden mr-3 bg-white/10 hover:bg-white/20 p-2 rounded-full border border-white/20 transition"                                 
+                                onClick={() => setIsSidebarOpen(true)}                                 
+                                aria-label="Open sidebar"                             
+                            >                                 
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">                                     
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />                                 
+                                </svg>                             
+                            </button>                         
+                        )}                         
+                        <span className="ml-10 text-lg font-semibold tracking-wide text-white ">Room:</span>                         
+                        <span className="ml-2 px-2 py-1 bg-white text-purple-700 rounded-md font-mono text-sm">{roomId}</span>                     
+                    </div>                      
+
+                    <div className="flex flex-col justify-center self-center sm:flex-row items-center gap-2 mt-2 md:mt-0 w-full md:w-auto">                         
+                        <div className="flex items-center w-full sm:w-auto max-w-md">                             
+                            <input                                 
+                                type="text"                                 
+                                value={roomUrl}                                 
+                                readOnly // we can not edit this                                 
+                                className="flex-1 border-none px-3 py-2 rounded-l-md text-sm text-gray-700 border-green-500 border-2 bg-white focus:outline-none"                                 
+                                onFocus={e => e.target.select()}//Jab input pe click/focus hoga, pura text auto select ho jaayega.                             
+                            />                              
+                            {/* Copy Room Link */}                             
+                            <button                                 
+                                onClick={() => {                                     
+                                    // // 1. Copy text to clipboard                                     
+                                    navigator.clipboard.writeText(roomUrl);                                      
+
+                                    // 2. State update → show "Copied!" instead of "Copy"                                     
+                                    setCopied(true);                                      
+
+                                    /// 3. After 1.5 sec, reset back to "Copy"                                     
+                                    setTimeout(() => setCopied(false), 1500);                                  
+
+                                }}                                  
+                                className="bg-green-500 hover:bg-green-600  text-white px-3 py-2 rounded-r-md text-sm font-medium transition "                                 
+                                id="copyBtn"                             
+                            >                                 
+                                {copied ? "Copied!" : "Copy"}                             
+                            </button>                         
+                        </div>                     
+                    </div>                 
+                </div>             
+            </div>              
+
+            {/* Main Content */}             
+            <div className="relative flex flex-1 overflow-hidden">                 
+                {isSidebarOpen && (                     
+                    //Sidebar mai jo jo chize display krwani ho vo daaldo ,                      
+                    // Sidebar component kahi aur bana rkha hai ,idhr isme daalo aur jo props chahiye vo bhej do                     
+                    <Sidebar
+                        users={usersWithMe}
+                        onSelectUser={setSelectedUser}
+                        selectedUserId={selectedUser?.userId}
+                        isOpen={isSidebarOpen}
+                        setIsOpen={setIsSidebarOpen}
+                        windowWidth={windowWidth}
+                        mySocketId={socket.id}
+                        />
+             
+                )}                  
+
+                <div className="flex-1 relative z-0 bg-gradient-to-br from-blue-50 to-purple-100">                     
+                    {loadingRoute && (                         
+                        <div className="absolute inset-0 z-10 flex items-center justify-center bg-white bg-opacity-70 backdrop-blur-sm">                             
+                            <div className="animate-spin rounded-full h-16 w-16 border-t-4 border-blue-500 border-solid"></div>                         
+                        </div>                     
+                    )}                     
+                    <Map                         
+                        users={usersWithMe}                         
+                        mySocketId={socket.id}                         
+                        route={route}                         
+                        selectedUser={selectedUser}                         
+                        selectedUserId={selectedUser?.userId}                     
+                    />                 
+                </div>             
+            </div>         
+        </div>     
+    );  
+};  
+
+export default App;
+</file>
+
+<file path="server/server.js">
+const express=require("express")
+const cors=require("cors");
+const http=require("http");
+const {Server}=require("socket.io");
+const {handleSocketConnection}=require("./socketHandlers");
+const locationRoute=require('./routes/locationRoute')
+const dotenv=require("dotenv");
+dotenv.config();
+
+const app=express();
+
+const server=http.createServer(app);
+// http.createServer(app) → creates an HTTP server and attaches your app to it.
+
+app.use(express.json());
+
+app.use(cors());
+
+const io=new Server(server,{//attaches Socket.io to the server.
+    cors:{
+        origin:"*",
+        methods:["GET","POST"],
+        credentials:true,//allows cookies, auth headers, etc
+    }
+});
+
+ 
+const PORT=process.env.PORT || 4000;
+
+
+app.get('/',(req,res)=>{
+    res.send("Hello from server");
+});
+
+app.use('/api/locations', locationRoute);
+
+
+io.on("connection",(socket)=>{//Listens for new clients connecting to your Socket.io server.
+    
+    handleSocketConnection(socket,io);
+    socket.on('disconnect',() => {
+        console.log('User Disconnected:',socket?.id);
+    })
+});
+
+server.listen(PORT,()=>{
+    console.log(`Server is running on port ${PORT}`);
+});
+</file>
+
+</files>

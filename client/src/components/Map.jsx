@@ -10,21 +10,22 @@ import {
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 
-import mypin from "../assets/mypin.png"
+import mypin from "../assets/mypin.png";
 
 const Map = ({ users, mySocketId, route, selectedUser, selectedUserId }) => {
   const [currentLocation, setCurrentLocation] = useState(null);
   const [theme, setTheme] = useState("streets"); 
 
-  
+  // Available map themes
   const themes = {
     streets: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
-    dark: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+    dark: "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
     light: "https://tiles.stadiamaps.com/tiles/alidade_smooth/{z}/{x}/{y}{r}.png",
     satellite:
       "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
   };
 
+  // Get current device location once on mount
   useEffect(() => {
     navigator.geolocation.getCurrentPosition((position) => {
       const { latitude, longitude } = position.coords;
@@ -32,6 +33,7 @@ const Map = ({ users, mySocketId, route, selectedUser, selectedUserId }) => {
     });
   }, []);
 
+  // Fit map bounds to show me + selected user
   function FitBounds({ me, selectedUser }) {
     const map = useMap();
     useEffect(() => {
@@ -58,10 +60,10 @@ const Map = ({ users, mySocketId, route, selectedUser, selectedUserId }) => {
   // ✅ Always treat users as an array
   const usersArray = Array.isArray(users) ? users : Object.values(users || {});
 
-  // Find yourself
+  // Find myself
   const me = usersArray.find((u) => u.userId === mySocketId);
 
-  // Extract polyline coordinates from GeoJSON
+  // Extract polyline coordinates from GeoJSON route (from API like OpenRoute)
   let polylineCoords = [];
   if (route?.features?.[0]) {
     polylineCoords = route.features[0].geometry.coordinates.map(
@@ -100,7 +102,7 @@ const Map = ({ users, mySocketId, route, selectedUser, selectedUserId }) => {
         {me?.lat && me?.lng && (
           <Marker
             position={[me.lat, me.lng]}
-            icon={new L.Icon({ iconUrl:mypin, iconSize: [70, 70] })}
+            icon={new L.Icon({ iconUrl: mypin, iconSize: [70, 70] })}
           >
             <Popup>You are here</Popup>
           </Marker>
@@ -119,11 +121,11 @@ const Map = ({ users, mySocketId, route, selectedUser, selectedUserId }) => {
                   icon={
                     selectedUserId === user.userId
                       ? new L.Icon({
-                          iconUrl: "/mypin.png",
+                          iconUrl: mypin,
                           iconSize: [60, 80],
                           className: "border-4 border-yellow-500",
                         })
-                      : new L.Icon({ iconUrl: "/mypin.png", iconSize: [50, 70] })
+                      : new L.Icon({ iconUrl: mypin, iconSize: [70, 70] })
                   }
                 >
                   <Popup>
@@ -144,13 +146,27 @@ const Map = ({ users, mySocketId, route, selectedUser, selectedUserId }) => {
               )
           )}
 
-        {/* Route polyline */}
+        {/* Route polyline (from API like OpenRouteService) */}
         {polylineCoords.length > 0 && (
           <Polyline
             positions={polylineCoords}
             color="#F9A825"
             weight={6}
             opacity={0.8}
+          />
+        )}
+
+        {/* ✅ Blue line between me and selected user */}
+        {me && selectedUser && me.lat && me.lng && selectedUser.lat && selectedUser.lng && (
+          <Polyline
+            positions={[
+              [me.lat, me.lng],
+              [selectedUser.lat, selectedUser.lng],
+            ]}
+            color="blue"
+            weight={5}
+            dashArray="6,6"
+            opacity={0.9}
           />
         )}
       </MapContainer>

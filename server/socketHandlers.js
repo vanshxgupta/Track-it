@@ -87,6 +87,8 @@ const handleSocketConnection=(socket,io)=>{//Jab bhi koi naya client connect hot
                         );
                         usersObj[id].distance = result.distance;
                         usersObj[id].eta = result.duration;
+                        // console.log(`Distance and ETA to ${id}:`, result);
+                        // console.log(`From (${me.lat},${me.lng}) to (${other.lat},${other.lng})`);
                     } catch {
                         usersObj[id].distance = "N/A";
                         usersObj[id].eta = "N/A";

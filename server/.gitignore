@@ -64,7 +64,7 @@ web_modules/
 
 # Optional npm cache directory
 .npm
-
+repomix-output
 # Optional eslint cache
 .eslintcache
 
