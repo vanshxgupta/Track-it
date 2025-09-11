@@ -2,10 +2,10 @@ import { io } from "socket.io-client";
 
 const socket = io(`http://localhost:4000`); //frontend socket connection with backend server.io
 
-export const joinRoom = (roomId, name = "No Username") => {
+export const joinRoom = (roomId, name, mode) => {
     //Frontend se backend ko event bhej rahe ho (joinRoom), taki user ek particular room me join ho jaye.
     //Ab name bhi pass karenge taki backend user ka naam store kar sake.
-    socket.emit("joinRoom", { roomId, name });
+    socket.emit('joinRoom', { roomId, name, mode });
 }
 
 export const emitLocationUpdate = (data) => {

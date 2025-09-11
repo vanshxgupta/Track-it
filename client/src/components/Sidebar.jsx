@@ -1,7 +1,7 @@
 import React from 'react';
 import UserCard from './UserCard';
 
-const Sidebar = ({ travelMode, username, users, onSelectUser, selectedUserId, isOpen, setIsOpen, windowWidth, mySocketId }) => {
+const Sidebar = ({ users, onSelectUser, selectedUserId, isOpen, setIsOpen, windowWidth, mySocketId }) => {
     // User selection closes sidebar on mobile
     const handleUserSelect = (user) => {
         if (user.userId !== mySocketId) { // Prevent selecting yourself
@@ -52,6 +52,7 @@ const Sidebar = ({ travelMode, username, users, onSelectUser, selectedUserId, is
                 <div className="flex-1 overflow-y-auto space-y-4 pr-1 custom-scrollbar">
                     {usersArray.map((user, idx) => (
                         <div
+
                             key={user.userId || idx} // safe key
                             onClick={() => handleUserSelect(user)}
                             className={`
@@ -62,14 +63,11 @@ const Sidebar = ({ travelMode, username, users, onSelectUser, selectedUserId, is
                                 rounded-2xl transition-all duration-200 shadow-sm cursor-pointer
                             `}
                         >
-                            {/* Pass username + travelMode to UserCard */}
-                            <UserCard
+
+                            <UserCard //everything , the name, mode.... will come from user.name , user.mode.....itself , no need to pass unneccessary props
                                 user={user}
-                                isMe={user.userId === mySocketId}
-                                isSelected={selectedUserId === user.userId}
-                                username={username}
-                                travelMode={travelMode}
                             />
+                            
                         </div>
                     ))}
                 </div>

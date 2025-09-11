@@ -30,7 +30,7 @@ const RoomPage = ({ userName, travelMode }) => {
         const currentRoomId = getRoomIdfromURL();
         if (!currentRoomId) return;
         setRoomId(currentRoomId);
-        joinRoom(currentRoomId); // socket.js se milega , vaha pr create kiya hai ye
+        joinRoom(currentRoomId, userName, travelMode); // socket.js se milega , vaha pr create kiya hai ye
 
         // Location
         if (!navigator.geolocation) { // location not supported ->send alert
