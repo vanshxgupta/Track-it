@@ -40,6 +40,7 @@ The content is organized as follows:
 </file_summary>
 
 <directory_structure>
+.gitignore
 client/.gitignore
 client/eslint.config.js
 client/index.html
@@ -50,10 +51,13 @@ client/src/App.jsx
 client/src/assets/Delivery.json
 client/src/assets/react.svg
 client/src/components/Map.jsx
+client/src/components/RegistrationPage.jsx
 client/src/components/Sidebar.jsx
 client/src/components/UserCard.jsx
 client/src/index.css
 client/src/main.jsx
+client/src/pages/HomePage.jsx
+client/src/pages/RoomPage.jsx
 client/src/socket.js
 client/vite.config.js
 server/.gitignore
@@ -68,318 +72,8 @@ server/socketHandlers.js
 <files>
 This section contains the contents of the repository's files.
 
-<file path="client/src/components/Map.jsx">
-import React, { useEffect, useState } from "react";
-import {
-  MapContainer,
-  TileLayer,
-  Marker,
-  Popup,
-  Polyline,
-  useMap,
-} from "react-leaflet";
-import L from "leaflet";
-import "leaflet/dist/leaflet.css";
-
-import mypin from "../assets/mypin.png"
-
-const Map = ({ users, mySocketId, route, selectedUser, selectedUserId }) => {
-  const [currentLocation, setCurrentLocation] = useState(null);
-  const [theme, setTheme] = useState("streets"); 
-
-  
-  const themes = {
-    streets: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
-    dark: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
-    light: "https://tiles.stadiamaps.com/tiles/alidade_smooth/{z}/{x}/{y}{r}.png",
-    satellite:
-      "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
-  };
-
-  useEffect(() => {
-    navigator.geolocation.getCurrentPosition((position) => {
-      const { latitude, longitude } = position.coords;
-      setCurrentLocation([latitude, longitude]);
-    });
-  }, []);
-
-  function FitBounds({ me, selectedUser }) {
-    const map = useMap();
-    useEffect(() => {
-      if (
-        me &&
-        selectedUser &&
-        me.lat &&
-        me.lng &&
-        selectedUser.lat &&
-        selectedUser.lng
-      ) {
-        const bounds = L.latLngBounds([
-          [me.lat, me.lng],
-          [selectedUser.lat, selectedUser.lng],
-        ]);
-        map.fitBounds(bounds, { padding: [80, 80] });
-      } else if (me && me.lat && me.lng) {
-        map.setView([me.lat, me.lng], 17);
-      }
-    }, [me, selectedUser, map]);
-    return null;
-  }
-
-  // ✅ Always treat users as an array
-  const usersArray = Array.isArray(users) ? users : Object.values(users || {});
-
-  // Find yourself
-  const me = usersArray.find((u) => u.userId === mySocketId);
-
-  // Extract polyline coordinates from GeoJSON
-  let polylineCoords = [];
-  if (route?.features?.[0]) {
-    polylineCoords = route.features[0].geometry.coordinates.map(
-      ([lng, lat]) => [lat, lng]
-    );
-  }
-
-  return (
-    <div className="relative w-full h-full">
-      {/* Theme Selector Dropdown */}
-      <div className="absolute top-4 left-4 z-[1000] bg-white rounded shadow p-2">
-        <select
-          value={theme}
-          onChange={(e) => setTheme(e.target.value)}
-          className="p-1 border rounded text-sm"
-        >
-          <option value="streets">Streets</option>
-          <option value="light">Light</option>
-          <option value="dark">Dark</option>
-          <option value="satellite">Satellite</option>
-        </select>
-      </div>
-
-      <MapContainer
-        center={currentLocation || [51.505, -0.09]}
-        zoom={18}
-        style={{ height: "100vh", width: "100%" }}
-        className="shadow-lg"
-      >
-        <FitBounds me={me} selectedUser={selectedUser} />
-
-        {/* Dynamic Map Theme */}
-        <TileLayer attribution="slrTech" url={themes[theme]} />
-
-        {/* Your marker */}
-        {me?.lat && me?.lng && (
-          <Marker
-            position={[me.lat, me.lng]}
-            icon={new L.Icon({ iconUrl:mypin, iconSize: [70, 70] })}
-          >
-            <Popup>You are here</Popup>
-          </Marker>
-        )}
-
-        {/* Other users */}
-        {usersArray
-          .filter((user) => user.userId !== mySocketId)
-          .map(
-            (user) =>
-              user.lat &&
-              user.lng && (
-                <Marker
-                  key={user.userId}
-                  position={[user.lat, user.lng]}
-                  icon={
-                    selectedUserId === user.userId
-                      ? new L.Icon({
-                          iconUrl: "/mypin.png",
-                          iconSize: [60, 80],
-                          className: "border-4 border-yellow-500",
-                        })
-                      : new L.Icon({ iconUrl: "/mypin.png", iconSize: [50, 70] })
-                  }
-                >
-                  <Popup>
-                    <span
-                      className={
-                        selectedUserId === user.userId
-                          ? "font-bold text-green-600"
-                          : ""
-                      }
-                    >
-                      User: {user.userId}
-                    </span>
-                    <br />
-                    Distance: {user.distance ?? "N/A"} km <br />
-                    ETA: {user.eta ?? "N/A"} min
-                  </Popup>
-                </Marker>
-              )
-          )}
-
-        {/* Route polyline */}
-        {polylineCoords.length > 0 && (
-          <Polyline
-            positions={polylineCoords}
-            color="#F9A825"
-            weight={6}
-            opacity={0.8}
-          />
-        )}
-      </MapContainer>
-    </div>
-  );
-};
-
-export default Map;
-</file>
-
-<file path="client/src/components/Sidebar.jsx">
-import React from 'react';
-import UserCard from './UserCard';
-
-const Sidebar = ({ users, onSelectUser, selectedUserId, isOpen, setIsOpen, windowWidth, mySocketId }) => {
-    // User selection closes sidebar on mobile
-    const handleUserSelect = (user) => {
-        if (user.userId !== mySocketId) { // ✅ Prevent selecting yourself
-            onSelectUser(user);
-            if (windowWidth < 768) setIsOpen(false);
-        }
-    };
-
-    // Close button
-    const handleClose = () => setIsOpen(false);
-
-    // Convert users object to array
-    const usersArray = Object.values(users || {});
-
-    return (
-        <>
-            {/* Sidebar */}
-            <div
-                className={`
-                    fixed top-0 left-0 z-40 h-full w-4/5 max-w-xs md:static md:z-10 md:w-80
-                    transition-transform duration-300 ease-in-out
-                    ${isOpen ? 'translate-x-0' : '-translate-x-full'}
-                    bg-gradient-to-b from-white via-blue-50 to-blue-100
-                    shadow-2xl md:shadow-md border-r border-gray-200
-                    p-5 rounded-r-2xl md:rounded-none flex flex-col
-                `}
-                style={{ height: '100vh' }}
-            >
-                {/* Header with close button on mobile */}
-                <div className="flex justify-between items-center mb-6">
-                    <h2 className="text-2xl font-extrabold bg-gradient-to-r from-green-600 to-blue-600 bg-clip-text text-transparent drop-shadow-sm">
-                        Active Users
-                    </h2>
-                    {windowWidth < 768 && (
-                        <button
-                            className="md:hidden bg-red-500 hover:bg-red-600 text-white rounded-full p-2 shadow-lg transition-transform transform hover:rotate-90"
-                            onClick={handleClose}
-                            aria-label="Close sidebar"
-                        >
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                            </svg>
-                        </button>
-                    )}
-                </div>
-
-                {/* User list */}
-                <div className="flex-1 overflow-y-auto space-y-4 pr-1 custom-scrollbar">
-                    {usersArray.map((user, idx) => (
-                        <div
-                            key={user.userId || user._id || idx} // ✅ safe key
-                            onClick={() => handleUserSelect(user)}
-                            className={`
-                                ${user.userId === mySocketId ? "hidden" : ""} 
-                                ${selectedUserId === user.userId
-                                    ? "bg-gradient-to-r from-green-100 to-blue-100 ring-2 ring-green-600 scale-[1.02]"
-                                    : "hover:bg-white hover:shadow-lg"}
-                                rounded-2xl transition-all duration-200 shadow-sm cursor-pointer
-                            `}
-                        >
-                            <UserCard user={user} />
-                        </div>
-                    ))}
-                </div>
-            </div>
-
-            {/* Overlay for mobile */}
-            {isOpen && windowWidth < 768 && (
-                <div
-                    className="fixed inset-0 bg-black bg-opacity-40 z-30 md:hidden"
-                    onClick={handleClose}
-                />
-            )}
-
-            {/* Custom scrollbar styles */}
-          
-            <style>{`
-                .custom-scrollbar::-webkit-scrollbar {
-                    width: 6px;
-                }
-                .custom-scrollbar::-webkit-scrollbar-track {
-                    background: transparent;
-                }
-                .custom-scrollbar::-webkit-scrollbar-thumb {
-                    background: linear-gradient(to bottom, #16a34a, #2563eb);
-                    border-radius: 9999px;
-                }
-            `}</style>
-
-        </>
-    );
-};
-
-export default Sidebar;
-</file>
-
-<file path="client/src/components/UserCard.jsx">
-import React from 'react';
-
-const UserCard = ({ user }) => (
-    <div className='p-3 bg-green-500 rounded-2xl'>
-        <h2 className="text-md font-semibold mb-1 truncate">User: {user.userId.slice(0, 15)}...</h2>
-        <div>
-            {user.distance && (
-                <div className="text-xs text-gray-600">
-                    {user.distance} • {user.eta}
-                </div>
-            )}
-        </div>
-    </div>
-);
-
-export default UserCard;
-</file>
-
-<file path="client/.gitignore">
-# Logs
-logs
-*.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-lerna-debug.log*
-
-node_modules
-dist
-dist-ssr
-*.local
-
-# Editor directories and files
-.vscode/*
-!.vscode/extensions.json
-.idea
-.DS_Store
-*.suo
-*.ntvs*
-*.njsproj
-*.sln
-*.sw?
-
-
-.env
+<file path=".gitignore">
+repomix-output
 </file>
 
 <file path="client/eslint.config.js">
@@ -457,6 +151,82 @@ If you are developing a production application, we recommend using TypeScript wi
 <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" aria-hidden="true" role="img" class="iconify iconify--logos" width="35.93" height="32" preserveAspectRatio="xMidYMid meet" viewBox="0 0 256 228"><path fill="#00D8FF" d="M210.483 73.824a171.49 171.49 0 0 0-8.24-2.597c.465-1.9.893-3.777 1.273-5.621c6.238-30.281 2.16-54.676-11.769-62.708c-13.355-7.7-35.196.329-57.254 19.526a171.23 171.23 0 0 0-6.375 5.848a155.866 155.866 0 0 0-4.241-3.917C100.759 3.829 77.587-4.822 63.673 3.233C50.33 10.957 46.379 33.89 51.995 62.588a170.974 170.974 0 0 0 1.892 8.48c-3.28.932-6.445 1.924-9.474 2.98C17.309 83.498 0 98.307 0 113.668c0 15.865 18.582 31.778 46.812 41.427a145.52 145.52 0 0 0 6.921 2.165a167.467 167.467 0 0 0-2.01 9.138c-5.354 28.2-1.173 50.591 12.134 58.266c13.744 7.926 36.812-.22 59.273-19.855a145.567 145.567 0 0 0 5.342-4.923a168.064 168.064 0 0 0 6.92 6.314c21.758 18.722 43.246 26.282 56.54 18.586c13.731-7.949 18.194-32.003 12.4-61.268a145.016 145.016 0 0 0-1.535-6.842c1.62-.48 3.21-.974 4.76-1.488c29.348-9.723 48.443-25.443 48.443-41.52c0-15.417-17.868-30.326-45.517-39.844Zm-6.365 70.984c-1.4.463-2.836.91-4.3 1.345c-3.24-10.257-7.612-21.163-12.963-32.432c5.106-11 9.31-21.767 12.459-31.957c2.619.758 5.16 1.557 7.61 2.4c23.69 8.156 38.14 20.213 38.14 29.504c0 9.896-15.606 22.743-40.946 31.14Zm-10.514 20.834c2.562 12.94 2.927 24.64 1.23 33.787c-1.524 8.219-4.59 13.698-8.382 15.893c-8.067 4.67-25.32-1.4-43.927-17.412a156.726 156.726 0 0 1-6.437-5.87c7.214-7.889 14.423-17.06 21.459-27.246c12.376-1.098 24.068-2.894 34.671-5.345a134.17 134.17 0 0 1 1.386 6.193ZM87.276 214.515c-7.882 2.783-14.16 2.863-17.955.675c-8.075-4.657-11.432-22.636-6.853-46.752a156.923 156.923 0 0 1 1.869-8.499c10.486 2.32 22.093 3.988 34.498 4.994c7.084 9.967 14.501 19.128 21.976 27.15a134.668 134.668 0 0 1-4.877 4.492c-9.933 8.682-19.886 14.842-28.658 17.94ZM50.35 144.747c-12.483-4.267-22.792-9.812-29.858-15.863c-6.35-5.437-9.555-10.836-9.555-15.216c0-9.322 13.897-21.212 37.076-29.293c2.813-.98 5.757-1.905 8.812-2.773c3.204 10.42 7.406 21.315 12.477 32.332c-5.137 11.18-9.399 22.249-12.634 32.792a134.718 134.718 0 0 1-6.318-1.979Zm12.378-84.26c-4.811-24.587-1.616-43.134 6.425-47.789c8.564-4.958 27.502 2.111 47.463 19.835a144.318 144.318 0 0 1 3.841 3.545c-7.438 7.987-14.787 17.08-21.808 26.988c-12.04 1.116-23.565 2.908-34.161 5.309a160.342 160.342 0 0 1-1.76-7.887Zm110.427 27.268a347.8 347.8 0 0 0-7.785-12.803c8.168 1.033 15.994 2.404 23.343 4.08c-2.206 7.072-4.956 14.465-8.193 22.045a381.151 381.151 0 0 0-7.365-13.322Zm-45.032-43.861c5.044 5.465 10.096 11.566 15.065 18.186a322.04 322.04 0 0 0-30.257-.006c4.974-6.559 10.069-12.652 15.192-18.18ZM82.802 87.83a323.167 323.167 0 0 0-7.227 13.238c-3.184-7.553-5.909-14.98-8.134-22.152c7.304-1.634 15.093-2.97 23.209-3.984a321.524 321.524 0 0 0-7.848 12.897Zm8.081 65.352c-8.385-.936-16.291-2.203-23.593-3.793c2.26-7.3 5.045-14.885 8.298-22.6a321.187 321.187 0 0 0 7.257 13.246c2.594 4.48 5.28 8.868 8.038 13.147Zm37.542 31.03c-5.184-5.592-10.354-11.779-15.403-18.433c4.902.192 9.899.29 14.978.29c5.218 0 10.376-.117 15.453-.343c-4.985 6.774-10.018 12.97-15.028 18.486Zm52.198-57.817c3.422 7.8 6.306 15.345 8.596 22.52c-7.422 1.694-15.436 3.058-23.88 4.071a382.417 382.417 0 0 0 7.859-13.026a347.403 347.403 0 0 0 7.425-13.565Zm-16.898 8.101a358.557 358.557 0 0 1-12.281 19.815a329.4 329.4 0 0 1-23.444.823c-7.967 0-15.716-.248-23.178-.732a310.202 310.202 0 0 1-12.513-19.846h.001a307.41 307.41 0 0 1-10.923-20.627a310.278 310.278 0 0 1 10.89-20.637l-.001.001a307.318 307.318 0 0 1 12.413-19.761c7.613-.576 15.42-.876 23.31-.876H128c7.926 0 15.743.303 23.354.883a329.357 329.357 0 0 1 12.335 19.695a358.489 358.489 0 0 1 11.036 20.54a329.472 329.472 0 0 1-11 20.722Zm22.56-122.124c8.572 4.944 11.906 24.881 6.52 51.026c-.344 1.668-.73 3.367-1.15 5.09c-10.622-2.452-22.155-4.275-34.23-5.408c-7.034-10.017-14.323-19.124-21.64-27.008a160.789 160.789 0 0 1 5.888-5.4c18.9-16.447 36.564-22.941 44.612-18.3ZM128 90.808c12.625 0 22.86 10.235 22.86 22.86s-10.235 22.86-22.86 22.86s-22.86-10.235-22.86-22.86s10.235-22.86 22.86-22.86Z"></path></svg>
 </file>
 
+<file path="client/src/components/RegistrationPage.jsx">
+import React, { useState } from 'react';
+import Lottie from 'lottie-react';
+import carAnimation from '../assets/Delivery.json';
+import { FaCar, FaWalking } from 'react-icons/fa';
+
+const RegistrationPage = ({ onSubmit }) => {
+    const [name, setName] = useState('');
+    const [mode, setMode] = useState('car'); // 'car' or 'walk'
+
+    const handleSubmit = (e) => {
+        e.preventDefault();
+        if (name.trim()) {
+            onSubmit(name.trim(), mode);
+        }
+    };
+
+    return (
+        <div className="min-h-screen flex flex-col items-center justify-center bg-gray-100 p-4">
+            <div className="bg-white p-8 rounded-2xl shadow-xl w-full max-w-md text-center">
+                <h2 className="text-3xl font-extrabold text-blue-600 mb-6">
+                    Join the Room
+                </h2>
+                <div className="w-48 h-48 mx-auto mb-6">
+                    <Lottie animationData={carAnimation} loop={true} />
+                </div>
+                <form onSubmit={handleSubmit} className="space-y-6">
+                    <input
+                        type="text"
+                        value={name}
+                        onChange={(e) => setName(e.target.value)}
+                        placeholder="Enter your name"
+                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 transition"
+                        required
+                    />
+                    <div className="flex justify-around items-center space-x-4">
+                        <button
+                            type="button"
+                            onClick={() => setMode('car')}
+                            className={`flex-1 flex items-center justify-center p-4 rounded-lg transition-all duration-200 ${
+                                mode === 'car'
+                                    ? 'bg-blue-600 text-white shadow-lg scale-105'
+                                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                            }`}
+                        >
+                            <FaCar className="text-2xl mr-2" />
+                            <span className="font-semibold">Car</span>
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setMode('walk')}
+                            className={`flex-1 flex items-center justify-center p-4 rounded-lg transition-all duration-200 ${
+                                mode === 'walk'
+                                    ? 'bg-green-600 text-white shadow-lg scale-105'
+                                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                            }`}
+                        >
+                            <FaWalking className="text-2xl mr-2" />
+                            <span className="font-semibold">Walk</span>
+                        </button>
+                    </div>
+                    <button
+                        type="submit"
+                        className="w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 rounded-lg shadow-md transition duration-300"
+                    >
+                        Continue to Map
+                    </button>
+                </form>
+            </div>
+        </div>
+    );
+};
+
+export default RegistrationPage;
+</file>
+
 <file path="client/src/main.jsx">
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
@@ -468,6 +238,665 @@ createRoot(document.getElementById('root')).render(
     <App />
   </StrictMode>,
 )
+</file>
+
+<file path="client/src/pages/HomePage.jsx">
+import React, { useState } from 'react';
+import Lottie from "lottie-react";
+import deliveryAnimation from '../assets/Delivery.json';
+
+const HomePage = () => {
+    const [roomInput, setRoomInput] = useState(''); // input from frontend ui
+
+    const handleCreateRoom = (e) => {
+        e.preventDefault();
+        if (roomInput.trim()) {
+            // Ensures that the room name is safe to use in a URL.
+            // space vagera ya fir special character vagera hoga tooh unko %20 ya fir kuch aur kar karke url valid kar dega ye
+            window.location.pathname = `/room/${encodeURIComponent(roomInput.trim())}`;
+        }
+    };
+
+    return (
+        <div className="min-h-screen flex flex-col bg-gradient-to-br from-blue-50 to-white text-gray-800">
+            {/* Header */}
+            <header className="w-full bg-white shadow-md py-4 px-6 flex justify-between items-center">
+                <h1 className="text-2xl font-bold text-blue-600">SpotSync</h1>
+                <nav className="hidden md:flex space-x-6 text-gray-600 font-medium">
+                    {/* <a href="#home" className="hover:text-blue-600">Home</a>
+                    <a href="#room" className="hover:text-blue-600">Join Room</a>
+                    <a href="#help" className="hover:text-blue-600">Help</a> */}
+                </nav>
+            </header>
+
+            {/* Hero Section */}
+            <main className="flex-grow flex flex-col lg:flex-row items-center justify-between px-4 sm:px-6 py-12 sm:py-16 max-w-7xl mx-auto gap-8 sm:gap-12">
+                {/* Text and Form */}
+                <div className="w-full lg:w-1/2 space-y-6 sm:space-y-8">
+                    <h2 className="text-3xl sm:text-4xl md:text-5xl font-extrabold leading-tight text-center lg:text-left">
+                        Coordinate with Friends & Family <br />
+                        <span className="text-blue-600">In Real Time</span>
+                    </h2>
+
+                    <p className="text-gray-600 text-base sm:text-lg text-center lg:text-left">
+                        Create a private room to share your live location. See how far away everyone is, find your way back to the group, and stay connected effortlessly.
+                    </p>
+
+                    {/* Form */}
+                    <form onSubmit={handleCreateRoom} className="flex flex-col sm:flex-row gap-4">
+                        <input
+                            type="text"
+                            value={roomInput}
+                            onChange={(e) => setRoomInput(e.target.value)}
+                            placeholder="Enter a unique room name"
+                            className="flex-1 px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500"
+                            required
+                        />
+                        <button
+                            type="submit"
+                            className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg transition duration-300"
+                        >
+                            Join Room
+                        </button>
+                    </form>
+                </div>
+
+                {/* Lottie Animation */}
+                <div className="w-80 h-80 sm:w-80 sm:h-80 md:w-96 md:h-96 lg:w-1/3 lg:h-1/3 rounded-full overflow-hidden flex items-center justify-center">
+                    <Lottie animationData={deliveryAnimation} loop={true} />
+                </div>
+            </main>
+        </div>
+    );
+};
+
+export default HomePage;
+</file>
+
+<file path="server/models/User.js">
+const mongoose = require('mongoose');
+
+const userSchema = new mongoose.Schema({
+    userId: {
+        type: String,
+        required: true,
+        unique: true
+    },
+    name: {
+        type: String,
+        required: true
+    },
+    coordinates: {
+        lat: {
+            type: Number,
+            required: true
+        },
+        lng: {
+            type: Number,
+            required: true
+        }
+    }
+});
+
+const User = mongoose.model('User', userSchema);
+
+module.exports = User;
+</file>
+
+<file path="client/.gitignore">
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+*.local
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+
+.env
+
+repomix-output
+</file>
+
+<file path="client/src/components/Map.jsx">
+import React, { useEffect, useState } from "react";
+import {
+  MapContainer,
+  TileLayer,
+  Marker,
+  Popup,
+  Polyline,
+  useMap,
+} from "react-leaflet";
+import L from "leaflet";
+import "leaflet/dist/leaflet.css";
+
+import mypin from "../assets/mypin.png";
+
+const Map = ({ users, mySocketId, route, selectedUser, selectedUserId }) => {
+  const [currentLocation, setCurrentLocation] = useState(null);
+  const [theme, setTheme] = useState("streets");
+
+  // Available map themes
+  const themes = {
+    streets: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+    dark: "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
+    light: "https://tiles.stadiamaps.com/tiles/alidade_smooth/{z}/{x}/{y}{r}.png",
+    satellite:
+      "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+  };
+
+  // Get current device location once on mount
+  useEffect(() => {
+    navigator.geolocation.getCurrentPosition((position) => {
+      const { latitude, longitude } = position.coords;
+      setCurrentLocation([latitude, longitude]);
+    });
+  }, []);
+
+  // Fit map bounds to show me + selected user
+  function FitBounds({ me, selectedUser }) {
+    const map = useMap();
+    useEffect(() => {
+      if (
+        me?.lat &&
+        me?.lng &&
+        selectedUser?.lat &&
+        selectedUser?.lng
+      ) {
+        const bounds = L.latLngBounds([
+          [me.lat, me.lng],
+          [selectedUser.lat, selectedUser.lng],
+        ]);
+        map.fitBounds(bounds, { padding: [80, 80] });
+      } else if (me?.lat && me?.lng) {
+        map.setView([me.lat, me.lng], 17);
+      }
+    }, [me, selectedUser, map]);
+    return null;
+  }
+
+  // Always treat users as an array
+  const usersArray = Array.isArray(users) ? users : Object.values(users || {});
+
+  // Find myself
+  const me = usersArray.find((u) => u.userId === mySocketId);
+
+  // Extract polyline coordinates from GeoJSON route (from API like OpenRoute)
+  let polylineCoords = [];
+  if (route?.features?.[0]) {
+    polylineCoords = route.features[0].geometry.coordinates.map(
+      ([lng, lat]) => [lat, lng]
+    );
+  }
+
+  return (
+    <div className="relative w-full h-full">
+      {/* Theme Selector Dropdown */}
+      <div className="absolute top-4 left-4 z-[1000] bg-white rounded shadow p-2">
+        <select
+          value={theme}
+          onChange={(e) => setTheme(e.target.value)}
+          className="p-1 border rounded text-sm"
+        >
+          <option value="streets">Streets</option>
+          <option value="light">Light</option>
+          <option value="dark">Dark</option>
+          <option value="satellite">Satellite</option>
+        </select>
+      </div>
+
+      <MapContainer
+        center={currentLocation || [51.505, -0.09]}
+        zoom={18}
+        style={{ height: "100vh", width: "100%" }}
+        className="shadow-lg"
+      >
+        <FitBounds me={me} selectedUser={selectedUser} />
+
+        {/* Dynamic Map Theme */}
+        <TileLayer attribution="slrTech" url={themes[theme]} />
+
+        {/* Your marker */}
+        {me?.lat && me?.lng && (
+          <Marker
+            position={[me.lat, me.lng]}
+            icon={new L.Icon({ iconUrl: mypin, iconSize: [70, 70] })}
+          >
+            <Popup>
+              <span className="font-bold text-lg">{me.name}</span>
+              <br />
+              <span className="text-sm text-gray-600">You are here</span>
+            </Popup>
+          </Marker>
+        )}
+
+        {/* Other users */}
+        {usersArray
+          .filter((user) => user.userId !== mySocketId)
+          .map(
+            (user) =>
+              user.lat &&
+              user.lng && (
+                <Marker
+                  key={user.userId}
+                  position={[user.lat, user.lng]}
+                  icon={
+                    selectedUserId === user.userId
+                      ? new L.Icon({
+                          iconUrl: mypin,
+                          iconSize: [60, 80],
+                          className: "border-4 border-yellow-500",
+                        })
+                      : new L.Icon({ iconUrl: mypin, iconSize: [70, 70] })
+                  }
+                >
+                  <Popup>
+                    <span
+                      className={
+                        selectedUserId === user.userId
+                          ? "font-bold text-green-600"
+                          : ""
+                      }
+                    >
+                      User: {user.name}
+                    </span>
+                    <br />
+                    Distance: {user.distance ?? "N/A"} km <br />
+                    ETA: {user.eta ?? "N/A"} min
+                  </Popup>
+                </Marker>
+              )
+          )}
+
+        {/* Route polyline (from API like OpenRouteService) */}
+        {polylineCoords.length > 0 && (
+          <Polyline
+            positions={polylineCoords}
+            color="#F9A825"
+            weight={6}
+            opacity={0.8}
+          />
+        )}
+
+        {/* Blue line between me and selected user */}
+        {me && selectedUser && me.lat && me.lng && selectedUser.lat && selectedUser.lng && (
+          <Polyline
+            positions={[
+              [me.lat, me.lng],
+              [selectedUser.lat, selectedUser.lng],
+            ]}
+            color="blue"
+            weight={5}
+            dashArray="6,6"
+            opacity={0.9}
+          />
+        )}
+      </MapContainer>
+    </div>
+  );
+};
+
+export default Map;
+</file>
+
+<file path="client/src/components/Sidebar.jsx">
+import React from 'react';
+import UserCard from './UserCard';
+
+const Sidebar = ({ users, onSelectUser, selectedUserId, isOpen, setIsOpen, windowWidth, mySocketId }) => {
+    // User selection closes sidebar on mobile
+    const handleUserSelect = (user) => {
+        if (user.userId !== mySocketId) { // Prevent selecting yourself
+            onSelectUser(user);
+            if (windowWidth < 768) setIsOpen(false);
+        }
+    };
+
+    // Close button
+    const handleClose = () => setIsOpen(false);
+
+    // Convert users object to array
+    const usersArray = Object.values(users || {});
+
+    return (
+        <>
+            {/* Sidebar */}
+            <div
+                className={`
+                    fixed top-0 left-0 z-40 h-full w-4/5 max-w-xs md:static md:z-10 md:w-80
+                    transition-transform duration-300 ease-in-out
+                    ${isOpen ? 'translate-x-0' : '-translate-x-full'}
+                    bg-gradient-to-b from-white via-blue-50 to-blue-100
+                    shadow-2xl md:shadow-md border-r border-gray-200
+                    p-5 rounded-r-2xl md:rounded-none flex flex-col
+                `}
+                style={{ height: '100vh' }}
+            >
+                {/* Header with close button on mobile */}
+                <div className="flex justify-between items-center mb-6">
+                    <h2 className="text-2xl font-extrabold bg-gradient-to-r from-green-600 to-blue-600 bg-clip-text text-transparent drop-shadow-sm">
+                        Active Users
+                    </h2>
+                    {windowWidth < 768 && (
+                        <button
+                            className="md:hidden bg-red-500 hover:bg-red-600 text-white rounded-full p-2 shadow-lg transition-transform transform hover:rotate-90"
+                            onClick={handleClose}
+                            aria-label="Close sidebar"
+                        >
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                        </button>
+                    )}
+                </div>
+
+                {/* User list */}
+                <div className="flex-1 overflow-y-auto space-y-4 pr-1 custom-scrollbar">
+                    {usersArray.map((user, idx) => (
+                        <div
+
+                            key={user.userId || idx} // safe key
+                            onClick={() => handleUserSelect(user)}
+                            className={`
+                                ${user.userId === mySocketId ? "hidden" : ""} 
+                                ${selectedUserId === user.userId
+                                    ? "bg-gradient-to-r from-green-100 to-blue-100 ring-2 ring-green-600 scale-[1.02]"
+                                    : "hover:bg-white hover:shadow-lg"}
+                                rounded-2xl transition-all duration-200 shadow-sm cursor-pointer
+                            `}
+                        >
+
+                            <UserCard //everything , the name, mode.... will come from user.name , user.mode.....itself , no need to pass unneccessary props
+                                user={user}
+                            />
+                            
+                        </div>
+                    ))}
+                </div>
+            </div>
+
+            {/* Overlay for mobile */}
+            {isOpen && windowWidth < 768 && (
+                <div
+                    className="fixed inset-0 bg-black bg-opacity-40 z-30 md:hidden"
+                    onClick={handleClose}
+                />
+            )}
+
+            {/* Custom scrollbar styles */}
+            <style>{`
+                .custom-scrollbar::-webkit-scrollbar {
+                    width: 6px;
+                }
+                .custom-scrollbar::-webkit-scrollbar-track {
+                    background: transparent;
+                }
+                .custom-scrollbar::-webkit-scrollbar-thumb {
+                    background: linear-gradient(to bottom, #16a34a, #2563eb);
+                    border-radius: 9999px;
+                }
+            `}</style>
+        </>
+    );
+};
+
+export default Sidebar;
+</file>
+
+<file path="client/src/components/UserCard.jsx">
+import React from 'react';
+import { FaCar, FaWalking } from 'react-icons/fa';
+
+const UserCard = ({ user }) => {
+  // Log user object
+  console.log("UserCard received:", user);
+
+  return (
+    <div className="flex items-center p-4 bg-white rounded-2xl shadow-lg border border-gray-200 w-full max-w-sm mx-auto">
+      {user.mode === 'car' ? (
+        <FaCar className="text-2xl text-blue-500 mr-4" />
+      ) : (
+        <FaWalking className="text-2xl text-green-500 mr-4" />
+      )}
+      
+      <div className="flex-grow">
+        <h2 className="text-lg font-bold text-gray-800 truncate">
+          {user.name}
+        </h2>
+        {user.distance && (
+          <div className="flex items-center text-sm text-gray-500 mt-1">
+            <span>{user.distance}</span>
+            <span className="mx-2">•</span>
+            <span>{user.eta}</span>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+export default UserCard;
+</file>
+
+<file path="client/src/pages/RoomPage.jsx">
+import React, { useEffect, useState } from 'react';
+import axios from 'axios';
+import Map from '../components/Map'
+import Sidebar from '../components/Sidebar';
+import socket, { listenforUsersUpdates, emitLocationUpdate, joinRoom } from '../socket.js'
+
+const getRoomIdfromURL = () => {
+    const match = window.location.pathname.match(/\/room\/([a-zA-Z0-9_-]+)/);
+    //Gives the path part of the current page’s URL (without domain and query params).     
+    // https://example.com/room/abcd1234     
+    // then window.location.pathname will give // "/room/abcd1234"      
+    return match ? match[1] : null;
+      // "/room/abcd1234".match(/\/room\/([a-zA-Z0-9_-]+)/); -> it will give ["/room/abcd1234", "abcd1234"] this as answer , and we will take the match[1] i.e 2nd element from here   
+};
+
+const RoomPage = ({ userName, travelMode }) => {
+    const [users, setusers] = useState({}); // default as empty object
+    const [selectedUser, setSelectedUser] = useState(null);
+    const [roomId, setRoomId] = useState(getRoomIdfromURL() || "");
+    const [copied, setCopied] = useState(false);
+    const [windowWidth, setWindowWidth] = useState(window.innerWidth);
+    const [isSidebarOpen, setIsSidebarOpen] = useState(window.innerWidth >= 768);
+    const [route, setRoute] = useState(null);
+    const [loadingRoute, setLoadingRoute] = useState(false);
+    const [myLocation, setMyLocation] = useState(null);
+
+    // This useEffect handles the core logic for joining the room and tracking location
+    useEffect(() => {
+        // Adding the user to the room
+        const currentRoomId = getRoomIdfromURL();
+        if (!currentRoomId) return;
+        setRoomId(currentRoomId);
+        joinRoom(currentRoomId, userName, travelMode); // socket.js se milega , vaha pr create kiya hai ye
+
+        // Location
+        if (!navigator.geolocation) { // location not supported ->send alert
+            alert('Geolocation is not supported by your browser');
+            return;
+        }
+
+        const handleLocation = (position) => { // send the lat and lng to the sockethandler to calculate the distance,eta and the route
+            const { latitude, longitude } = position.coords;
+            setMyLocation({ lat: latitude, lng: longitude }); // store my location locally
+            emitLocationUpdate({ lat: latitude, lng: longitude, name: userName, mode: travelMode }); // socket.js mai create kiya hai , emitLocationUpdate se hum location bhej denge , aur socketHandler.js usko get kar lega
+        };
+
+        const handleError = (error) => { // permission denied then , we cannot use the website
+            alert('Location Permission Denied. Please allow location Access!');
+        };
+
+        const watchId = navigator.geolocation.watchPosition(handleLocation, handleError, { // getcurrentposition
+            enableHighAccuracy: true,
+            maximumAge: 0, // not storing any cache
+            timeout: 6000, // maximum time (in ms) the browser will wait to get a location fix before throwing an error.
+        });
+
+        listenforUsersUpdates(setusers);
+
+        return () => {
+            socket.off('user-offline');
+            navigator.geolocation.clearWatch(watchId);
+        };
+    }, [userName, travelMode]);
+
+    // This useEffect handles fetching the route when a user is selected
+    useEffect(() => {
+        const fetchRoute = async () => {
+            if (!selectedUser) {
+                setRoute(null);
+                setLoadingRoute(false);
+                return;
+            }
+            const me = users[socket.id];
+            if (!me) return;
+            setLoadingRoute(true);
+            try {
+                const API_BASE = process.env.REACT_APP_API_URL || "http://localhost:4000";
+                const res = await axios.post(`${API_BASE}/api/locations/route`, {
+                    start: { lat: me.lat, lng: me.lng },
+                    end: { lat: selectedUser.lat, lng: selectedUser.lng },
+                    mode: travelMode,
+                });
+                setRoute(res.data);
+            } catch (err) {
+                console.error("Route fetch error:", err.response?.data || err.message);
+                setRoute(null);
+            }
+            setLoadingRoute(false);
+        };
+        fetchRoute();
+    }, [selectedUser, users, travelMode]);
+
+    //  FIX: remove duplicate usersWithMe definition (keep only this object merge)
+    const usersWithMe = {
+        ...users,
+        ...(myLocation ? { [socket.id]: { lat: myLocation.lat, lng: myLocation.lng, userId: socket.id, name: userName || "Me" } } : {})
+    };
+
+    // Creates a shareable room link
+    const roomUrl = `${window.location.origin}/room/${encodeURIComponent(roomId)}`;
+
+    return (
+        <div className="relative flex flex-col h-screen overflow-hidden">
+            {/* Top Bar */}
+            <div className="sticky top-0 z-30 bg-blue-500 p-2 text-white shadow-lg">
+                <div className="flex flex-col md:flex-row items-center justify-between ">
+                    <div className="flex items-center w-full md:w-auto">
+                        {/* For mobile view Side Bar */}
+                        {windowWidth < 768 && !isSidebarOpen && (
+                            <button
+                                className="md:hidden mr-3 bg-white/10 hover:bg-white/20 p-2 rounded-full border border-white/20 transition"
+                                onClick={() => setIsSidebarOpen(true)}
+                                aria-label="Open sidebar"
+                            >
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                                </svg>
+                            </button>
+                        )}
+                        <span className="ml-10 text-lg font-semibold tracking-wide text-white ">Room:</span>
+                        <span className="ml-2 px-2 py-1 bg-white text-purple-700 rounded-md font-mono text-sm">{roomId}</span>
+                    </div>
+
+                    <div className="flex flex-col justify-center self-center sm:flex-row items-center gap-2 mt-2 md:mt-0 w-full md:w-auto">
+                        <div className="flex items-center w-full sm:w-auto max-w-md">
+                            <input
+                                type="text"
+                                value={roomUrl}
+                                readOnly // we can not edit this
+                                className="flex-1 border-none px-3 py-2 rounded-l-md text-sm text-gray-700 border-green-500 border-2 bg-white focus:outline-none"
+                                onFocus={e => e.target.select()} // Jab input pe click/focus hoga, pura text auto select ho jaayega.
+                            />
+                            {/* Copy Room Link */}
+                            <button
+                                onClick={() => {
+                                    // 1. Copy text to clipboard
+                                    navigator.clipboard.writeText(roomUrl);
+                                    // 2. State update → show "Copied!" instead of "Copy"
+                                    setCopied(true);
+                                    // 3. After 1.5 sec, reset back to "Copy"
+                                    setTimeout(() => setCopied(false), 1500);
+                                }}
+                                className="bg-green-500 hover:bg-green-600  text-white px-3 py-2 rounded-r-md text-sm font-medium transition "
+                                id="copyBtn"
+                            >
+                                {copied ? "Copied!" : "Copy"}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            {/* Main Content */}
+            <div className="relative flex flex-1 overflow-hidden">
+                {isSidebarOpen && (
+                    // Sidebar mai jo jo chize display krwani ho vo daaldo ,
+                    // Sidebar component kahi aur bana rkha hai ,idhr isme daalo aur jo props chahiye vo bhej do
+                    <Sidebar
+                        travelMode={travelMode}
+                        username={userName || "Me"}
+                        users={usersWithMe}
+                        onSelectUser={setSelectedUser}
+                        selectedUserId={selectedUser?.userId}
+                        isOpen={isSidebarOpen}
+                        setIsOpen={setIsSidebarOpen}
+                        windowWidth={windowWidth}
+                        mySocketId={socket.id}
+                    />
+                )}
+
+                <div className="flex-1 relative z-0 bg-gradient-to-br from-blue-50 to-purple-100">
+                    {loadingRoute && (
+                        <div className="absolute inset-0 z-10 flex items-center justify-center bg-white bg-opacity-70 backdrop-blur-sm">
+                            <div className="animate-spin rounded-full h-16 w-16 border-t-4 border-blue-500 border-solid"></div>
+                        </div>
+                    )}
+                    <Map
+                        users={usersWithMe}
+                        mySocketId={socket.id}
+                        route={route}
+                        selectedUser={selectedUser}
+                        selectedUserId={selectedUser?.userId}
+                    />
+                </div>
+            </div>
+        </div>
+    );
+};
+
+export default RoomPage;
+</file>
+
+<file path="client/vite.config.js">
+import { defineConfig } from 'vite'
+import react from '@vitejs/plugin-react'
+import tailwindcss from '@tailwindcss/vite'
+// https://vite.dev/config/
+export default defineConfig({
+  plugins: [react(),tailwindcss()],
+})
 </file>
 
 <file path="server/.gitignore">
@@ -537,7 +966,7 @@ web_modules/
 
 # Optional npm cache directory
 .npm
-
+repomix-output
 # Optional eslint cache
 .eslintcache
 
@@ -640,36 +1069,6 @@ sketch
 # End of https://www.toptal.com/developers/gitignore/api/node,database,react
 </file>
 
-<file path="server/models/User.js">
-const mongoose = require('mongoose');
-
-const userSchema = new mongoose.Schema({
-    userId: {
-        type: String,
-        required: true,
-        unique: true
-    },
-    name: {
-        type: String,
-        required: true
-    },
-    coordinates: {
-        lat: {
-            type: Number,
-            required: true
-        },
-        lng: {
-            type: Number,
-            required: true
-        }
-    }
-});
-
-const User = mongoose.model('User', userSchema);
-
-module.exports = User;
-</file>
-
 <file path="server/routes/locationRoute.js">
 const express = require('express');
 const { updateLocation, getAllUsers, getRoute } = require('../controllers/locationcontroller');
@@ -682,14 +1081,13 @@ router.post('/route', getRoute);
 module.exports = router;
 </file>
 
-<file path="client/vite.config.js">
-import { defineConfig } from 'vite'
-import react from '@vitejs/plugin-react'
-import tailwindcss from '@tailwindcss/vite'
-// https://vite.dev/config/
-export default defineConfig({
-  plugins: [react(),tailwindcss()],
-})
+<file path="client/src/index.css">
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;700&display=swap');
+@import "tailwindcss";
+
+body {
+  font-family: 'Poppins', sans-serif;
+}
 </file>
 
 <file path="client/package.json">
@@ -713,6 +1111,7 @@ export default defineConfig({
     "react-dom": "^19.1.1",
     "react-icons": "^5.5.0",
     "react-leaflet": "^5.0.0",
+    "react-router-dom": "^7.8.2",
     "socket.io-client": "^4.8.1",
     "tailwindcss": "^4.1.12"
   },
@@ -730,144 +1129,122 @@ export default defineConfig({
 }
 </file>
 
-<file path="client/src/index.css">
-@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;700&display=swap');
-@import "tailwindcss";
-
-body {
-  font-family: 'Poppins', sans-serif;
-}
-</file>
-
-<file path="client/src/socket.js">
-import { io } from "socket.io-client";
-
-const socket=io(`http://localhost:4000`);//frontend socket connection with backend server.io
-
-export const joinRoom=(roomId)=>{//Frontend se backend ko event bhej rahe ho (joinRoom), taki user ek particular room me join ho jaye.
-    socket.emit("joinRoom",roomId);
-}
-
-export const emitLocationUpdate=(data)=>{//Frontend apna location data backend ko bhejta hai.
-    socket.emit("locationUpdate",data);
-}
-
-export const listenforUsersUpdates=(callback)=>{//Frontend backend ke events sunega (jaise koi user offline hua).
-    socket.on("user-offline", (data) => {
-        callback(data); //callback(data) → is case mein callback setusers hai, jo React ka state updater hai → iska matlab UI ko turant update kar do latest users list ke saath.
-    });
-}
-
-export default socket;
-</file>
-
 <file path="server/controllers/locationcontroller.js">
+// server/controllers/locationcontroller.js
 const axios = require('axios');
 const User = require('../models/User');
 
+// Update user location
 exports.updateLocation = async (req, res) => {
-    const { userId, lat, lng } = req.body;
+  const { userId, lat, lng } = req.body;
 
-    try {
-        const user = await User.findByIdAndUpdate(userId, { lat, lng }, { new: true });
-        res.status(200).json(user);
-    } catch (error) {
-        res.status(500).json({ message: 'Error updating location', error });
-    }
+  try {
+    // update coordinates field (nested object)
+    const user = await User.findByIdAndUpdate(
+      userId,
+      { coordinates: { lat, lng } },
+      { new: true }
+    );
+    res.status(200).json(user);
+  } catch (error) {
+    console.error('Error updating location:', error.message);
+    res.status(500).json({ message: 'Error updating location', error });
+  }
 };
 
 // Get all users
 exports.getAllUsers = async (req, res) => {
-    try {
-        const users = await User.find();
-        res.status(200).json(users);
-    } catch (error) {
-        res.status(500).json({ message: 'Error fetching users', error });
-    }
+  try {
+    const users = await User.find();
+    res.status(200).json(users);
+  } catch (error) {
+    console.error('Error fetching users:', error.message);
+    res.status(500).json({ message: 'Error fetching users', error });
+  }
 };
 
-
-//CALCULATING THE DISTANCE AND DURATION
+// CALCULATING THE DISTANCE AND DURATION
 exports.calculateDistanceAndETA = async (origin, destination, mode = 'car') => {
-    const apikey = process.env.ORS_api_key;
+  const apikey = process.env.ORS_api_key;
 
-    // profile select car/walk ke liye
-    let profile;
-    if (mode === 'car') profile = 'driving-car';
-    else if (mode === 'walk') profile = 'foot-walking';
-    else throw new Error("Invalid mode! Use 'car' or 'walk'.");
+  let profile;
+  if (mode === 'car') profile = 'driving-car';
+  else if (mode === 'walk') profile = 'foot-walking';
+  else throw new Error("Invalid mode! Use 'car' or 'walk'.");
 
-    // API endpoint
-    const url = `https://api.openrouteservice.org/v2/matrix/${profile}`;
+  const url = `https://api.openrouteservice.org/v2/matrix/${profile}`;
 
-    try {
-        const response = await axios.post(url, {
-            locations: [
-                [origin.lng, origin.lat],                // origin
-                [destinatison.lng, destination.lat]       // destination
-            ],
-            metrics: ['distance', 'duration'],          // kya chahiye
-            units: 'km'                                 // distance km me
-        }, {
-            headers: {
-                'Authorization': apikey,                  // API key
-                'Content-Type': 'application/json'
-            }
-        });
+  try {
+    const response = await axios.post(
+      url,
+      {
+        locations: [
+          [origin.lng, origin.lat],       // origin
+          [destination.lng, destination.lat] // destination (fixed spelling)
+        ],
+        metrics: ['distance', 'duration'],
+        units: 'km'
+      },
+      {
+        headers: {
+          Authorization: apikey,
+          'Content-Type': 'application/json'
+        }
+      }
+    );
 
-        const distance = response.data.distances[0][1]; // km
-        const duration = response.data.durations[0][1]; // seconds
+    const distance = response.data.distances[0][1]; // distance in km
+    const duration = response.data.durations[0][1]; // duration in seconds
 
-        return {
-            mode, // car ya walking
-            distance: `${distance.toFixed(2)} km`,
-            duration: `${Math.round(duration / 60)} mins` // mins
-        };
-
-    } catch (error) {
-        console.error('Error in calculateDistanceAndETA:', error);
-        throw error;
-    }
+    return {
+      mode,
+      distance: `${distance.toFixed(2)} km`,
+      duration: `${Math.round(duration / 60)} mins`
+    };
+  } catch (error) {
+    console.error('Error in calculateDistanceAndETA:', error.response?.data || error.message);
+    throw error;
+  }
 };
 
-
+// GET ROUTE between two points
 exports.getRoute = async (req, res) => {
-    const { start, end, mode } = req.body;
-    const apikey = process.env.ORS_api_key;
+  const { start, end, mode } = req.body;
+  const apikey = process.env.ORS_api_key;
 
-    let profile;
-    if (mode === 'car') profile = 'driving-car';
-    else if (mode === 'walk') profile = 'foot-walking';
-    // else return res.status(400).json({ error: "Invalid mode! Use 'car' or 'walk'." });
-    else{
-        profile = 'driving-car'; // default to car if invalid mode
-        console.warn("Invalid mode provided. Defaulting to 'car'.");
-    }
+  let profile;
+  if (mode === 'car') profile = 'driving-car';
+  else if (mode === 'walk') profile = 'foot-walking';
+  else {
+    profile = 'driving-car'; // default fallback
+    console.warn("Invalid mode provided. Defaulting to 'car'.");
+  }
 
-    // Correct Directions API
-    const url = `https://api.openrouteservice.org/v2/directions/${profile}/geojson`;
+  const url = `https://api.openrouteservice.org/v2/directions/${profile}/geojson`;
 
-    try {
-        const response = await axios.post(url, {
-            coordinates: [
-                [start.lng, start.lat],
-                [end.lng, end.lat]
-            ]
-        }, {
-            headers: {
-                'Authorization': apikey,
-                'Content-Type': 'application/json'
-            }
-        });
+  try {
+    const response = await axios.post(
+      url,
+      {
+        coordinates: [
+          [start.lng, start.lat],
+          [end.lng, end.lat]
+        ]
+      },
+      {
+        headers: {
+          Authorization: apikey,
+          'Content-Type': 'application/json'
+        }
+      }
+    );
 
-        res.json({
-            route: response.data, // full geojson route
-        });
-
-    } catch (error) {
-        console.error('Error getting route:', error.response?.data || error.message);
-        res.status(500).json({ error: 'Failed to get route' });
-    }
+    // return GeoJSON route
+    res.json({ route: response.data });
+  } catch (error) {
+    console.error('Error getting route:', error.response?.data || error.message);
+    res.status(500).json({ error: 'Failed to get route' });
+  }
 };
 </file>
 
@@ -897,378 +1274,93 @@ exports.getRoute = async (req, res) => {
 }
 </file>
 
-<file path="server/socketHandlers.js">
-const { Socket } = require("socket.io");
+<file path="client/src/socket.js">
+import { io } from "socket.io-client";
 
-let roomUsers={};
-//roomUsers ek object hai jisme har room ke andar kaunsa user hai aur unki location store hogi.
-// {
-//   "room1": {
-//      "socketId1": { lat: 23.45, lng: 77.11 },
-//      "socketId2": { lat: 22.11, lng: 78.44 }
-//   },
-//   "room2": {
-//      "socketId3": { lat: 19.07, lng: 72.87 }
-//   }
-// }
+const socket = io(`http://localhost:4000`); //frontend socket connection with backend server.io
 
-const handleSocketConnection=(socket,io)=>{//Jab bhi koi naya client connect hota hai to ye function chalega.
-
-    console.log('A user connected:',socket?.id);
-
-    socket.on('joinRoom',(roomId)=>{
-        socket.join(roomId); // is user ko ek specific room me daal diya
-        socket.roomId=roomId; //set the roomId on the socket object for later use
-        
-        if(!roomUsers[roomId]){
-            roomUsers[roomId]={}; //if room doesn't exist , create a empty object
-        }
-        roomUsers[roomId][socket.id]={}; // room ke andar user ko add kar diya
-
-
-    });
-
-    socket.on('locationUpdate',async(data) => {
-
-        const {lat,lng,mode}=data;
-        const roomId=socket.roomId;
-
-        if(!roomId) return ;
-
-        roomUsers[roomId][socket.id]={lat,lng}; //update the location of user
-
-        const users = roomUsers[roomId]; // define users variable
-
-
-        //Calculate distance and ETA(estimated time of arrival) for all Room users
-        const updatedUsers = await Promise.all(
-            Object.keys(users).map(async (id) => {
-                //har ek user ka har ek user se distance or time niklega ->just like smjho cross join kar rahe hai 
-                let distance = null, duration = null;
-                // Find the "me" user for each client
-                if (users[socket.id] && users[id] && id !== socket.id) {
-                    try {
-                        const result = await calculateDistanceAndETA(users[id], users[socket.id], mode || 'car'); // mode support added
-                        distance = result.distance;
-                        duration = result.duration;
-                    } catch {
-                        distance = 'N/A';
-                        duration = 'N/A';
-                    }
-                }
-                return {
-                    userId: id,
-                    lat: users[id]?.lat,
-                    lng: users[id]?.lng,
-                    distance,
-                    eta: duration,
-                };
-            })
-            
-        );
-
-        io.to(roomId)//Ye socket.io ka function hai jo sirf ek particular room me message bhejta hai.
-        .emit('locationUpdate', updatedUsers);
-     
-    });
-
-    socket.on('disconnect', () => {
-        const roomId = socket.roomId; // Get the room the socket was part of
-
-        // If the room exists and has users
-        if (roomId && roomUsers[roomId]) {
-            // Remove the disconnected user from the room
-            delete roomUsers[roomId][socket.id];
-
-            // Prepare updated list of active users in the room
-            const updatedUsers = Object.keys(roomUsers[roomId]).map(id => ({
-                userId: id, // add socket id
-                ...roomUsers[roomId][id]  // spread other user details
-            }));
-
-            // Notify all users in the room that someone went offline
-            io.to(roomId).emit('user-offline', updatedUsers);
-
-            // If no users left in the room, clean up the room entry
-            if (updatedUsers.length === 0) {
-                delete roomUsers[roomId];
-            }
-        }
-    });
-
+export const joinRoom = (roomId, name, mode) => {
+    //Frontend se backend ko event bhej rahe ho (joinRoom), taki user ek particular room me join ho jaye.
+    //Ab name bhi pass karenge taki backend user ka naam store kar sake.
+    socket.emit('joinRoom', { roomId, name, mode });
 }
 
-module.exports={handleSocketConnection};
+export const emitLocationUpdate = (data) => {
+    //Frontend apna location data backend ko bhejta hai.
+    socket.emit("locationUpdate", data);
+}
+
+export const listenforUsersUpdates = (callback) => {
+    //Frontend backend ke events sunega (jaise koi user offline hua ya location update hui).
+
+    socket.on("locationUpdate", (data) => {
+        callback(data); 
+        //callback(data) → is case mein callback setusers hai, jo React ka state updater hai 
+        //→ iska matlab UI ko turant update kar do latest users list ke saath.
+    });
+
+    socket.on("user-offline", (data) => {
+        callback(data); 
+        //Ye tab chalega jab koi user disconnect ho jaye → UI update hoga accordingly.
+    });
+}
+
+export default socket;
 </file>
 
 <file path="client/src/App.jsx">
-import { useEffect, useState } from 'react'; 
-import React from 'react'; 
-import Lottie from "lottie-react"; 
-import deliveryAnimation from './assets/Delivery.json';  
-import socket,{listenforUsersUpdates, emitLocationUpdate, joinRoom } from './socket'; 
-import Map from './components/Map'; 
-import Sidebar from './components/Sidebar'; 
-import UserCard from './components/UserCard'; 
-import axios from 'axios'    
+import { useState } from 'react';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import HomePage from './pages/HomePage';
+import RoomPage from './pages/RoomPage';
+import RegistrationPage from './components/RegistrationPage'
 
-const getRoomIdfromURL = () => {      
-    const match = window.location.pathname.match(/\/room\/([a-zA-Z0-9_-]+)/); //Gives the path part of the current page’s URL (without domain and query params).     
-    // https://example.com/room/abcd1234     
-    // then window.location.pathname will give // "/room/abcd1234"      
-    return match ? match[1] : null;     
-    // "/room/abcd1234".match(/\/room\/([a-zA-Z0-9_-]+)/); -> it will give ["/room/abcd1234", "abcd1234"] this as answer , and we will take the match[1] i.e 2nd element from here   
-};   
+// Moved from original App.js
+const getRoomIdfromURL = () => {
+    // Gives the path part of the current page’s URL (without domain and query params).
+    // https://example.com/room/abcd1234
+    // then window.location.pathname will give "/room/abcd1234"
+    const match = window.location.pathname.match(/\/room\/([a-zA-Z0-9_-]+)/);
+    return match ? match[1] : null;
+};
 
-function App() {      
-    const [users,setusers]=useState({}); // default as empty object     
-    const [selectedUser, setSelectedUser] = useState(null);      
+function App() {
+    const [hasRegistered, setHasRegistered] = useState(false);
+    const [userName, setUserName] = useState('');
+    const [travelMode, setTravelMode] = useState('car');
+    
+    // We will use the URL to determine the initial room ID
+    const initialRoomId = getRoomIdfromURL();
 
-    const [roomId, setRoomId] = useState(getRoomIdfromURL() || "");     
-    console.log('roomId:',roomId);      
+    const handleRegistration = (name, mode) => {
+        setUserName(name);
+        setTravelMode(mode);
+        setHasRegistered(true);
+    };
 
-    const [roomInput, setRoomInput] = useState('');//input from frontend ui     
-    const [copied, setCopied] = useState(false);     
-    const [windowWidth, setWindowWidth] = useState(window.innerWidth);      
-
-    console.log('windowWidth:',windowWidth);      
-
-    const [isSidebarOpen, setIsSidebarOpen] = useState(window.innerWidth >= 768);     
-    const [route, setRoute] = useState(null);     
-    const [loadingRoute, setLoadingRoute] = useState(false);      
-
-    // Track my location separately (so we can include it in usersWithMe)     
-    const [myLocation, setMyLocation] = useState(null);       
-
-    const handleCreateRoom = (e) => {          
-        e.preventDefault();         
-        if (roomInput.trim()) {             
-            window.location.pathname = `/room/${encodeURIComponent(roomInput.trim())}`;//Ensures that the room name is safe to use in a URL. ,             
-            //  space vagera ya fir special character vagera hoga tooh unko %20 ya fir kuch aur kar karke url valid kar dega ye         
-        }      
-    };      
-
-    useEffect(()=>{        
-        //Adding the user to the room       
-        const currentRoomId=getRoomIdfromURL();       
-        if(!currentRoomId) return ;       
-        setRoomId(currentRoomId);       
-        joinRoom(currentRoomId); //socket.js se milega , vaha pr create kiya hai ye         
-
-        //Location        
-        if(!navigator.geolocation){//location not supported ->send alert         
-            alert('Geolocation is not supported by your browser');         
-            return ;       
-        }         
-
-        const handleLocation=(position)=>{//send the lat and lng to the sockethandler to calculate the distance,eta and the route         
-            const {latitude,longitude}=position.coords;         
-            setMyLocation({ lat: latitude, lng: longitude }); // store my location locally         
-            emitLocationUpdate({lat:latitude,lng:longitude}); //socket.js mai create kiya hai , emitLocationUpdate se hum location bhej denge , aur socketHandler.js usko get kar lega        
-        }              
-
-        const handleError=(error)=>{//permission denied then , we cannot use the website         
-            alert('Location Permission Denied.Please allow location Access!');       
-        }               
-
-        const watchId = navigator.geolocation.watchPosition(handleLocation,handleError,{//getcurrentposition         
-            enableHighAccuracy:true,         
-            maximumAge:0, //not storing any cache          
-            timeout:6000,//maximum time (in ms) the browser will wait to get a location fix before throwing an error.       
-        })        
-
-        listenforUsersUpdates(setusers)        
-
-        return()=>{         
-            socket.off('user-offline');         
-            navigator.geolocation.clearWatch(watchId);       
-        }       
-    },[window.location.pathname])       
-
-    useEffect(() => {         
-        const fetchRoute = async () => {             
-            if (!selectedUser) {                 
-                setRoute(null);                 
-                setLoadingRoute(false);                 
-                return;             
-            }             
-            const me = users[socket.id]; 
-            if (!me) return;             
-            setLoadingRoute(true);             
-            try {         
-                const API_BASE = process.env.REACT_APP_API_URL || "http://localhost:4000";       
-                const res = await axios.post(`${API_BASE}/api/locations/route`, {                     
-                    start: { lat: me.lat, lng: me.lng },                     
-                    end: { lat: selectedUser.lat, lng: selectedUser.lng }                 
-                });                 
-                setRoute(res.data);             
-            }catch (err) {
-            console.error("Route fetch error:", err.response?.data || err.message);
-            setRoute(null);
-            }
-                
-            setLoadingRoute(false);         
-        };         
-        fetchRoute();     
-    }, [selectedUser, users]);      
-
-    // ✅ FIX: remove duplicate usersWithMe definition (keep only this object merge)   
-    const usersWithMe = {         
-        ...users,         
-        ...(myLocation ? { [socket.id]: { lat: myLocation.lat, lng: myLocation.lng, userId: socket.id, name: "Me" } } : {})     
-    };       
-
-
-    //LANDING PAGE     
-    if (!roomId) {         
-        return (             
-            <div className="min-h-screen flex flex-col bg-gradient-to-br from-blue-50 to-white text-gray-800">                  
-
-                {/* Header */}                 
-                <header className="w-full bg-white shadow-md py-4 px-6 flex justify-between items-center">                     
-                    <h1 className="text-2xl font-bold text-blue-600">SpotSync</h1>                     
-                    <nav className="hidden md:flex space-x-6 text-gray-600 font-medium">                         
-                        {/* <a href="#home" className="hover:text-blue-600">Home</a>                         
-                        <a href="#room" className="hover:text-blue-600">Join Room</a>                         
-                        <a href="#help" className="hover:text-blue-600">Help</a> */}                     
-                    </nav>                 
-                </header>                  
-
-                {/* Hero Section */}                 
-                <main className="flex-grow flex flex-col lg:flex-row items-center justify-between px-4 sm:px-6 py-12 sm:py-16 max-w-7xl mx-auto gap-8 sm:gap-12">                     
-                    {/* Text and Form */}                     
-                    <div className="w-full lg:w-1/2 space-y-6 sm:space-y-8">                          
-
-                        <h2 className="text-3xl sm:text-4xl md:text-5xl font-extrabold leading-tight text-center lg:text-left">                             
-                            Coordinate with Friends & Family <br />                             
-                            <span className="text-blue-600">In Real Time</span>                         
-                        </h2>                                                  
-
-                        <p className="text-gray-600 text-base sm:text-lg text-center lg:text-left">                             
-                            Create a private room to share your live location. See how far away everyone is, find your way back to the group, and stay connected effortlessly.                         
-                        </p>                           
-
-                        {/* Form */}                         
-                        <form onSubmit={handleCreateRoom} className="flex flex-col sm:flex-row gap-4">                             
-                            <input                                 
-                                type="text"                                 
-                                value={roomInput}                                 
-                                onChange={(e) => setRoomInput(e.target.value)}                                 
-                                placeholder="Enter a unique room name"                                 
-                                className="flex-1 px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500"                                 
-                                required                             
-                            />                             
-                            <button                                 
-                                type="submit"                                 
-                                className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg transition duration-300"                             
-                            >                                 
-                                Join Room                             
-                            </button>                         
-                        </form>                     
-                    </div>                      
-
-                    {/* Lottie Animation */}                     
-                    <div className="w-80 h-80 sm:w-80 sm:h-80 md:w-96 md:h-96 lg:w-1/3 lg:h-1/3 rounded-full overflow-hidden flex items-center justify-center">                         
-                        <Lottie animationData={deliveryAnimation} loop={true} />                     
-                    </div>                 
-                </main>             
-            </div>         
-        );     
-    }        
-
-    // Creates a shareable room link     
-    const roomUrl = `${window.location.origin}/room/${encodeURIComponent(roomId)}`;       
-
-    //INSIDE THE ROOM     
-    return (         
-        <div className="relative flex flex-col h-screen overflow-hidden">             
-            {/* Top Bar */}             
-            <div className="sticky top-0 z-30 bg-blue-500 p-2 text-white shadow-lg">                 
-                <div className="flex flex-col md:flex-row items-center justify-between ">                     
-                    <div className="flex items-center w-full md:w-auto">                         
-                        {/* For mobile view Side Bar */}                         
-                        {windowWidth < 768 && !isSidebarOpen && (                             
-                            <button                                 
-                                className="md:hidden mr-3 bg-white/10 hover:bg-white/20 p-2 rounded-full border border-white/20 transition"                                 
-                                onClick={() => setIsSidebarOpen(true)}                                 
-                                aria-label="Open sidebar"                             
-                            >                                 
-                                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">                                     
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />                                 
-                                </svg>                             
-                            </button>                         
-                        )}                         
-                        <span className="ml-10 text-lg font-semibold tracking-wide text-white ">Room:</span>                         
-                        <span className="ml-2 px-2 py-1 bg-white text-purple-700 rounded-md font-mono text-sm">{roomId}</span>                     
-                    </div>                      
-
-                    <div className="flex flex-col justify-center self-center sm:flex-row items-center gap-2 mt-2 md:mt-0 w-full md:w-auto">                         
-                        <div className="flex items-center w-full sm:w-auto max-w-md">                             
-                            <input                                 
-                                type="text"                                 
-                                value={roomUrl}                                 
-                                readOnly // we can not edit this                                 
-                                className="flex-1 border-none px-3 py-2 rounded-l-md text-sm text-gray-700 border-green-500 border-2 bg-white focus:outline-none"                                 
-                                onFocus={e => e.target.select()}//Jab input pe click/focus hoga, pura text auto select ho jaayega.                             
-                            />                              
-                            {/* Copy Room Link */}                             
-                            <button                                 
-                                onClick={() => {                                     
-                                    // // 1. Copy text to clipboard                                     
-                                    navigator.clipboard.writeText(roomUrl);                                      
-
-                                    // 2. State update → show "Copied!" instead of "Copy"                                     
-                                    setCopied(true);                                      
-
-                                    /// 3. After 1.5 sec, reset back to "Copy"                                     
-                                    setTimeout(() => setCopied(false), 1500);                                  
-
-                                }}                                  
-                                className="bg-green-500 hover:bg-green-600  text-white px-3 py-2 rounded-r-md text-sm font-medium transition "                                 
-                                id="copyBtn"                             
-                            >                                 
-                                {copied ? "Copied!" : "Copy"}                             
-                            </button>                         
-                        </div>                     
-                    </div>                 
-                </div>             
-            </div>              
-
-            {/* Main Content */}             
-            <div className="relative flex flex-1 overflow-hidden">                 
-                {isSidebarOpen && (                     
-                    //Sidebar mai jo jo chize display krwani ho vo daaldo ,                      
-                    // Sidebar component kahi aur bana rkha hai ,idhr isme daalo aur jo props chahiye vo bhej do                     
-                    <Sidebar
-                        users={usersWithMe}
-                        onSelectUser={setSelectedUser}
-                        selectedUserId={selectedUser?.userId}
-                        isOpen={isSidebarOpen}
-                        setIsOpen={setIsSidebarOpen}
-                        windowWidth={windowWidth}
-                        mySocketId={socket.id}
-                        />
-             
-                )}                  
-
-                <div className="flex-1 relative z-0 bg-gradient-to-br from-blue-50 to-purple-100">                     
-                    {loadingRoute && (                         
-                        <div className="absolute inset-0 z-10 flex items-center justify-center bg-white bg-opacity-70 backdrop-blur-sm">                             
-                            <div className="animate-spin rounded-full h-16 w-16 border-t-4 border-blue-500 border-solid"></div>                         
-                        </div>                     
-                    )}                     
-                    <Map                         
-                        users={usersWithMe}                         
-                        mySocketId={socket.id}                         
-                        route={route}                         
-                        selectedUser={selectedUser}                         
-                        selectedUserId={selectedUser?.userId}                     
-                    />                 
-                </div>             
-            </div>         
-        </div>     
-    );  
-};  
+    return (
+        <Router>
+            <Routes>
+                <Route path="/" element={<HomePage />} />
+                <Route
+                    path="/room/:roomId"
+                    element={
+                        !hasRegistered ? (
+                            <RegistrationPage onSubmit={handleRegistration} />
+                        ) : (
+                            <RoomPage
+                                userName={userName}
+                                travelMode={travelMode}
+                            />
+                        )
+                    }
+                />
+                {/* Redirect from /room to / if no room ID is specified */}
+                <Route path="/room" element={<Navigate to="/" replace />} />
+            </Routes>
+        </Router>
+    );
+}
 
 export default App;
 </file>
@@ -1322,6 +1414,162 @@ io.on("connection",(socket)=>{//Listens for new clients connecting to your Socke
 server.listen(PORT,()=>{
     console.log(`Server is running on port ${PORT}`);
 });
+</file>
+
+<file path="server/socketHandlers.js">
+const { Socket } = require("socket.io");
+const { calculateDistanceAndETA } = require('./controllers/locationcontroller'); 
+
+let roomUsers={};
+// roomUsers ek object hai jisme har room ke andar kaunsa user hai aur unki info store hoti hai.
+// Structure:
+// {
+//   "room1": {
+//      "socketId1": { name: "User1", lat: 23.45, lng: 77.11, mode: "car" },
+//      "socketId2": { name: "User2", lat: 22.11, lng: 78.44, mode: "walk" }
+//   },
+//   "room2": {
+//      "socketId3": { name: "User3", lat: 19.07, lng: 72.87, mode: "car" }
+//   }
+// }
+//
+// Yaani, har room ke andar ek object hota hai jo socketId ko user details se map karta hai.
+// Har user ke liye yeh details store hoti hain: name, latitude, longitude, aur travel mode.
+
+
+// Helper function: convert roomUsers[roomId] into consistent object for frontend
+function buildUsersObject(roomId) {
+    const usersObj = {};
+    if (!roomUsers[roomId]) return usersObj;
+    Object.keys(roomUsers[roomId]).forEach((id) => {
+        const u = roomUsers[roomId][id];
+        usersObj[id] = {
+            userId: id,
+            name: u.name || "No Username",
+            lat: u.lat ?? null,
+            lng: u.lng ?? null,
+            mode: u.mode ,
+            distance: u.distance ?? null,
+            eta: u.eta ?? null,
+        };
+    });
+    return usersObj;
+}
+// {
+//   "userId": "socketId",
+//   "name": "UserName",
+//   "lat": 23.45,
+//   "lng": 77.11,
+//   "mode": "car",
+//   "distance": "2 km",
+//   "eta": "5 mins"
+// }
+
+
+
+
+const handleSocketConnection=(socket,io)=>{//Jab bhi koi naya client connect hota hai to ye function chalega.
+
+    console.log('A user connected:',socket?.id);
+
+    socket.on('joinRoom',({roomId,name,mode})=>{
+        socket.join(roomId); // is user ko ek specific room me daal diya
+        socket.roomId=roomId; //set the roomId on the socket object for later use
+        
+        if(!roomUsers[roomId]){
+            roomUsers[roomId]={}; //if room doesn't exist , create a empty object
+        }
+        // room ke andar user ko add kar diya, name bhi save kar liya
+        roomUsers[roomId][socket.id] = { 
+            name: name || "Vansh", 
+            mode: mode || "car",   
+            lat: null, 
+            lng: null 
+        };
+
+        // update sabko
+        io.to(roomId).emit('locationUpdate', buildUsersObject(roomId));
+    });
+
+socket.on('locationUpdate', async (data) => {
+    const { lat, lng, mode, username } = data; // make sure client sends username
+    const roomId = socket.roomId;
+
+    if (!roomId || !username) return;
+
+    // Ensure user object exists
+    if (!roomUsers[roomId][socket.id]) {
+        roomUsers[roomId][socket.id] = { username };
+    }
+    roomUsers[roomId][socket.id].lat = lat;
+    roomUsers[roomId][socket.id].lng = lng;
+
+    const me = roomUsers[roomId][socket.id];
+    const usersObj = {};
+
+    // Build users object keyed by username instead of socket.id
+    await Promise.all(
+        Object.keys(roomUsers[roomId]).map(async (id) => {
+            const user = roomUsers[roomId][id];
+            if (!user || !user.username) return;
+
+            usersObj[user.username] = {
+                username: user.username,
+                lat: user.lat,
+                lng: user.lng,
+                distance: null,
+                eta: null,
+            };
+
+            if (me.lat != null && me.lng != null) {
+                if (id === socket.id) {
+                    usersObj[user.username].distance = "0 km";
+                    usersObj[user.username].eta = "0 mins";
+                } else if (user.lat != null && user.lng != null) {
+                    try {
+                        const result = await calculateDistanceAndETA(
+                            { lat: user.lat, lng: user.lng },
+                            { lat: me.lat, lng: me.lng },
+                            mode || 'car'
+                        );
+                        usersObj[user.username].distance = result.distance;
+                        usersObj[user.username].eta = result.duration;
+                    } catch {
+                        usersObj[user.username].distance = "N/A";
+                        usersObj[user.username].eta = "N/A";
+                    }
+                }
+            }
+        })
+    );
+
+    io.to(roomId).emit('locationUpdate', usersObj);
+});
+
+    socket.on('disconnect', () => {
+        const roomId = socket.roomId; // Get the room the socket was part of
+
+        // If the room exists and has users
+        if (roomId && roomUsers[roomId]) {
+            // Remove the disconnected user from the room
+            delete roomUsers[roomId][socket.id];
+
+            // Prepare updated list of active users in the room
+            const usersObj = buildUsersObject(roomId);
+
+            // Notify all users in the room that someone went offline
+            io.to(roomId).emit('user-offline', usersObj);
+
+            // If no users left in the room, clean up the room entry
+            if (Object.keys(roomUsers[roomId]).length === 0) {
+                delete roomUsers[roomId];
+            }
+        }
+    });
+
+}
+
+module.exports={handleSocketConnection};
 </file>
 
 </files>

@@ -14,7 +14,7 @@ import mypin from "../assets/mypin.png";
 
 const Map = ({ users, mySocketId, route, selectedUser, selectedUserId }) => {
   const [currentLocation, setCurrentLocation] = useState(null);
-  const [theme, setTheme] = useState("streets"); 
+  const [theme, setTheme] = useState("streets");
 
   // Available map themes
   const themes = {
@@ -38,26 +38,24 @@ const Map = ({ users, mySocketId, route, selectedUser, selectedUserId }) => {
     const map = useMap();
     useEffect(() => {
       if (
-        me &&
-        selectedUser &&
-        me.lat &&
-        me.lng &&
-        selectedUser.lat &&
-        selectedUser.lng
+        me?.lat &&
+        me?.lng &&
+        selectedUser?.lat &&
+        selectedUser?.lng
       ) {
         const bounds = L.latLngBounds([
           [me.lat, me.lng],
           [selectedUser.lat, selectedUser.lng],
         ]);
         map.fitBounds(bounds, { padding: [80, 80] });
-      } else if (me && me.lat && me.lng) {
+      } else if (me?.lat && me?.lng) {
         map.setView([me.lat, me.lng], 17);
       }
     }, [me, selectedUser, map]);
     return null;
   }
 
-  // ✅ Always treat users as an array
+  // Always treat users as an array
   const usersArray = Array.isArray(users) ? users : Object.values(users || {});
 
   // Find myself
@@ -104,7 +102,11 @@ const Map = ({ users, mySocketId, route, selectedUser, selectedUserId }) => {
             position={[me.lat, me.lng]}
             icon={new L.Icon({ iconUrl: mypin, iconSize: [70, 70] })}
           >
-            <Popup>You are here</Popup>
+            <Popup>
+              <span className="font-bold text-lg">{me.name}</span>
+              <br />
+              <span className="text-sm text-gray-600">You are here</span>
+            </Popup>
           </Marker>
         )}
 
@@ -136,7 +138,7 @@ const Map = ({ users, mySocketId, route, selectedUser, selectedUserId }) => {
                           : ""
                       }
                     >
-                      User: {user.userId}
+                      User: {user.name}
                     </span>
                     <br />
                     Distance: {user.distance ?? "N/A"} km <br />
@@ -156,7 +158,7 @@ const Map = ({ users, mySocketId, route, selectedUser, selectedUserId }) => {
           />
         )}
 
-        {/* ✅ Blue line between me and selected user */}
+        {/* Blue line between me and selected user */}
         {me && selectedUser && me.lat && me.lng && selectedUser.lat && selectedUser.lng && (
           <Polyline
             positions={[

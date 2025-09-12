@@ -90,7 +90,7 @@ const RoomPage = ({ userName, travelMode }) => {
         fetchRoute();
     }, [selectedUser, users, travelMode]);
 
-    // ✅ FIX: remove duplicate usersWithMe definition (keep only this object merge)
+    //  remove duplicate usersWithMe definition (keep only this object merge)
     const usersWithMe = {
         ...users,
         ...(myLocation ? { [socket.id]: { lat: myLocation.lat, lng: myLocation.lng, userId: socket.id, name: userName || "Me" } } : {})
