@@ -72,61 +72,60 @@ const handleSocketConnection=(socket,io)=>{//Jab bhi koi naya client connect hot
         io.to(roomId).emit('locationUpdate', buildUsersObject(roomId));
     });
 
-    socket.on('locationUpdate', async (data) => {
-        const { lat, lng } = data; // We only need lat and lng from the client update
-        const roomId = socket.roomId;
-        const currentUserId = socket.id;
-    
-        // Validate that the user and room exist before proceeding
-        if (!roomId || !roomUsers[roomId] || !roomUsers[roomId][currentUserId]) {
-            console.warn(`Received invalid location update from socket: ${currentUserId}`);
-            return;
-        }
-    
-        // 1. Update the current user's location in our main `roomUsers` object.
-        const currentUser = roomUsers[roomId][currentUserId];
-        currentUser.lat = lat;
-        currentUser.lng = lng;
-    
-        // 2. Asynchronously calculate the distance and ETA for every other user in the room
-        //    relative to the user who just updated their location.
-        await Promise.all(
-            Object.keys(roomUsers[roomId]).map(async (targetId) => {
-                const targetUser = roomUsers[roomId][targetId];
-    
-                // If the target is the user who just moved, set their distance to 0.
-                if (targetId === currentUserId) {
-                    targetUser.distance = '0.00 km';
-                    targetUser.eta = '0 mins';
-                    return; // Move to the next user in the map function
-                }
-                
-                // Ensure both users have valid coordinates to avoid unnecessary API calls.
-                if (currentUser.lat && currentUser.lng && targetUser.lat && targetUser.lng) {
+socket.on('locationUpdate', async (data) => {
+    const { lat, lng, mode, username } = data; // make sure client sends username
+    const roomId = socket.roomId;
+
+    if (!roomId || !username) return;
+
+    // Ensure user object exists
+    if (!roomUsers[roomId][socket.id]) {
+        roomUsers[roomId][socket.id] = { username };
+    }
+    roomUsers[roomId][socket.id].lat = lat;
+    roomUsers[roomId][socket.id].lng = lng;
+
+    const me = roomUsers[roomId][socket.id];
+    const usersObj = {};
+
+    // Build users object keyed by username instead of socket.id
+    await Promise.all(
+        Object.keys(roomUsers[roomId]).map(async (id) => {
+            const user = roomUsers[roomId][id];
+            if (!user || !user.username) return;
+
+            usersObj[user.username] = {
+                username: user.username,
+                lat: user.lat,
+                lng: user.lng,
+                distance: null,
+                eta: null,
+            };
+
+            if (me.lat != null && me.lng != null) {
+                if (id === socket.id) {
+                    usersObj[user.username].distance = "0 km";
+                    usersObj[user.username].eta = "0 mins";
+                } else if (user.lat != null && user.lng != null) {
                     try {
-                        // Calculate route from the user who moved (currentUser) to the other user (targetUser).
                         const result = await calculateDistanceAndETA(
-                            { lat: currentUser.lat, lng: currentUser.lng },
-                            { lat: targetUser.lat, lng: targetUser.lng },
-                            targetUser.mode || 'car' // Use the target's mode for an accurate ETA
+                            { lat: user.lat, lng: user.lng },
+                            { lat: me.lat, lng: me.lng },
+                            mode || 'car'
                         );
-                        // Store the calculated distance and ETA on the target user's object.
-                        targetUser.distance = result.distance;
-                        targetUser.eta = result.duration;
-                    } catch (error) {
-                        // If the API fails, set placeholder values.
-                        console.error("API Error calculating distance:", error.message);
-                        targetUser.distance = 'N/A';
-                        targetUser.eta = 'N/A';
+                        usersObj[user.username].distance = result.distance;
+                        usersObj[user.username].eta = result.duration;
+                    } catch {
+                        usersObj[user.username].distance = "N/A";
+                        usersObj[user.username].eta = "N/A";
                     }
                 }
-            })
-        );
-    
-        // 3. After all calculations are complete, use our consistent helper function
-        //    to format the data and broadcast the complete, updated user list to everyone.
-        io.to(roomId).emit('locationUpdate', buildUsersObject(roomId));
-    });
+            }
+        })
+    );
+
+    io.to(roomId).emit('locationUpdate', usersObj);
+});
 
     socket.on('disconnect', () => {
         const roomId = socket.roomId; // Get the room the socket was part of

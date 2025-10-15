@@ -57,7 +57,6 @@ const RoomPage = ({ userName, travelMode }) => {
         listenforUsersUpdates(setusers);
 
         return () => {
-            socket.off('locationUpdate');
             socket.off('user-offline');
             navigator.geolocation.clearWatch(watchId);
         };
@@ -81,7 +80,7 @@ const RoomPage = ({ userName, travelMode }) => {
                     end: { lat: selectedUser.lat, lng: selectedUser.lng },
                     mode: travelMode,
                 });
-                setRoute(res.data.route);
+                setRoute(res.data);
             } catch (err) {
                 console.error("Route fetch error:", err.response?.data || err.message);
                 setRoute(null);
@@ -90,6 +89,12 @@ const RoomPage = ({ userName, travelMode }) => {
         };
         fetchRoute();
     }, [selectedUser, users, travelMode]);
+
+    //  remove duplicate usersWithMe definition (keep only this object merge)
+    const usersWithMe = {
+        ...users,
+        ...(myLocation ? { [socket.id]: { lat: myLocation.lat, lng: myLocation.lng, userId: socket.id, name: userName || "Me" } } : {})
+    };
 
     // Creates a shareable room link
     const roomUrl = `${window.location.origin}/room/${encodeURIComponent(roomId)}`;
@@ -153,7 +158,7 @@ const RoomPage = ({ userName, travelMode }) => {
                     <Sidebar
                         travelMode={travelMode}
                         username={userName || "Me"}
-                         users={users}
+                        users={usersWithMe}
                         onSelectUser={setSelectedUser}
                         selectedUserId={selectedUser?.userId}
                         isOpen={isSidebarOpen}
@@ -161,7 +166,6 @@ const RoomPage = ({ userName, travelMode }) => {
                         windowWidth={windowWidth}
                         mySocketId={socket.id}
                     />
-
                 )}
 
                 <div className="flex-1 relative z-0 bg-gradient-to-br from-blue-50 to-purple-100">
@@ -171,7 +175,7 @@ const RoomPage = ({ userName, travelMode }) => {
                         </div>
                     )}
                     <Map
-                        users={users}
+                        users={usersWithMe}
                         mySocketId={socket.id}
                         route={route}
                         selectedUser={selectedUser}
