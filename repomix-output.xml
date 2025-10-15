@@ -45,11 +45,15 @@ client/.gitignore
 client/eslint.config.js
 client/index.html
 client/package.json
+client/public/favicon.ico
+client/public/routeshare.jpg
 client/public/vite.svg
 client/README.md
 client/src/App.jsx
 client/src/assets/Delivery.json
+client/src/assets/mypin.png
 client/src/assets/react.svg
+client/src/components/ChatWindow.jsx
 client/src/components/Map.jsx
 client/src/components/RegistrationPage.jsx
 client/src/components/Sidebar.jsx
@@ -59,6 +63,7 @@ client/src/main.jsx
 client/src/pages/HomePage.jsx
 client/src/pages/RoomPage.jsx
 client/src/socket.js
+client/vercel.json
 client/vite.config.js
 server/.gitignore
 server/controllers/locationcontroller.js
@@ -106,22 +111,6 @@ export default defineConfig([
     },
   },
 ])
-</file>
-
-<file path="client/index.html">
-<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Vite + React</title>
-  </head>
-  <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.jsx"></script>
-  </body>
-</html>
 </file>
 
 <file path="client/public/vite.svg">
@@ -375,188 +364,6 @@ dist-ssr
 repomix-output
 </file>
 
-<file path="client/src/components/Map.jsx">
-import React, { useEffect, useState } from "react";
-import {
-  MapContainer,
-  TileLayer,
-  Marker,
-  Popup,
-  Polyline,
-  useMap,
-} from "react-leaflet";
-import L from "leaflet";
-import "leaflet/dist/leaflet.css";
-
-import mypin from "../assets/mypin.png";
-
-const Map = ({ users, mySocketId, route, selectedUser, selectedUserId }) => {
-  const [currentLocation, setCurrentLocation] = useState(null);
-  const [theme, setTheme] = useState("streets");
-
-  // Available map themes
-  const themes = {
-    streets: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
-    dark: "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
-    light: "https://tiles.stadiamaps.com/tiles/alidade_smooth/{z}/{x}/{y}{r}.png",
-    satellite:
-      "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
-  };
-
-  // Get current device location once on mount
-  useEffect(() => {
-    navigator.geolocation.getCurrentPosition((position) => {
-      const { latitude, longitude } = position.coords;
-      setCurrentLocation([latitude, longitude]);
-    });
-  }, []);
-
-  // Fit map bounds to show me + selected user
-  function FitBounds({ me, selectedUser }) {
-    const map = useMap();
-    useEffect(() => {
-      if (
-        me?.lat &&
-        me?.lng &&
-        selectedUser?.lat &&
-        selectedUser?.lng
-      ) {
-        const bounds = L.latLngBounds([
-          [me.lat, me.lng],
-          [selectedUser.lat, selectedUser.lng],
-        ]);
-        map.fitBounds(bounds, { padding: [80, 80] });
-      } else if (me?.lat && me?.lng) {
-        map.setView([me.lat, me.lng], 17);
-      }
-    }, [me, selectedUser, map]);
-    return null;
-  }
-
-  // Always treat users as an array
-  const usersArray = Array.isArray(users) ? users : Object.values(users || {});
-
-  // Find myself
-  const me = usersArray.find((u) => u.userId === mySocketId);
-
-  // Extract polyline coordinates from GeoJSON route (from API like OpenRoute)
-  let polylineCoords = [];
-  if (route?.features?.[0]) {
-    polylineCoords = route.features[0].geometry.coordinates.map(
-      ([lng, lat]) => [lat, lng]
-    );
-  }
-
-  return (
-    <div className="relative w-full h-full">
-      {/* Theme Selector Dropdown */}
-      <div className="absolute top-4 left-4 z-[1000] bg-white rounded shadow p-2">
-        <select
-          value={theme}
-          onChange={(e) => setTheme(e.target.value)}
-          className="p-1 border rounded text-sm"
-        >
-          <option value="streets">Streets</option>
-          <option value="light">Light</option>
-          <option value="dark">Dark</option>
-          <option value="satellite">Satellite</option>
-        </select>
-      </div>
-
-      <MapContainer
-        center={currentLocation || [51.505, -0.09]}
-        zoom={18}
-        style={{ height: "100vh", width: "100%" }}
-        className="shadow-lg"
-      >
-        <FitBounds me={me} selectedUser={selectedUser} />
-
-        {/* Dynamic Map Theme */}
-        <TileLayer attribution="slrTech" url={themes[theme]} />
-
-        {/* Your marker */}
-        {me?.lat && me?.lng && (
-          <Marker
-            position={[me.lat, me.lng]}
-            icon={new L.Icon({ iconUrl: mypin, iconSize: [70, 70] })}
-          >
-            <Popup>
-              <span className="font-bold text-lg">{me.name}</span>
-              <br />
-              <span className="text-sm text-gray-600">You are here</span>
-            </Popup>
-          </Marker>
-        )}
-
-        {/* Other users */}
-        {usersArray
-          .filter((user) => user.userId !== mySocketId)
-          .map(
-            (user) =>
-              user.lat &&
-              user.lng && (
-                <Marker
-                  key={user.userId}
-                  position={[user.lat, user.lng]}
-                  icon={
-                    selectedUserId === user.userId
-                      ? new L.Icon({
-                          iconUrl: mypin,
-                          iconSize: [60, 80],
-                          className: "border-4 border-yellow-500",
-                        })
-                      : new L.Icon({ iconUrl: mypin, iconSize: [70, 70] })
-                  }
-                >
-                  <Popup>
-                    <span
-                      className={
-                        selectedUserId === user.userId
-                          ? "font-bold text-green-600"
-                          : ""
-                      }
-                    >
-                      User: {user.name}
-                    </span>
-                    <br />
-                    Distance: {user.distance ?? "N/A"} km <br />
-                    ETA: {user.eta ?? "N/A"} min
-                  </Popup>
-                </Marker>
-              )
-          )}
-
-        {/* Route polyline (from API like OpenRouteService) */}
-        {polylineCoords.length > 0 && (
-          <Polyline
-            positions={polylineCoords}
-            color="#F9A825"
-            weight={6}
-            opacity={0.8}
-          />
-        )}
-
-        {/* Blue line between me and selected user */}
-        {me && selectedUser && me.lat && me.lng && selectedUser.lat && selectedUser.lng && (
-          <Polyline
-            positions={[
-              [me.lat, me.lng],
-              [selectedUser.lat, selectedUser.lng],
-            ]}
-            color="blue"
-            weight={5}
-            dashArray="6,6"
-            opacity={0.9}
-          />
-        )}
-      </MapContainer>
-    </div>
-  );
-};
-
-export default Map;
-</file>
-
 <file path="client/src/components/Sidebar.jsx">
 import React from 'react';
 import UserCard from './UserCard';
@@ -696,197 +503,21 @@ const UserCard = ({ user }) => {
 export default UserCard;
 </file>
 
-<file path="client/src/pages/RoomPage.jsx">
-import React, { useEffect, useState } from 'react';
-import axios from 'axios';
-import Map from '../components/Map'
-import Sidebar from '../components/Sidebar';
-import socket, { listenforUsersUpdates, emitLocationUpdate, joinRoom } from '../socket.js'
-
-const getRoomIdfromURL = () => {
-    const match = window.location.pathname.match(/\/room\/([a-zA-Z0-9_-]+)/);
-    //Gives the path part of the current page’s URL (without domain and query params).     
-    // https://example.com/room/abcd1234     
-    // then window.location.pathname will give // "/room/abcd1234"      
-    return match ? match[1] : null;
-      // "/room/abcd1234".match(/\/room\/([a-zA-Z0-9_-]+)/); -> it will give ["/room/abcd1234", "abcd1234"] this as answer , and we will take the match[1] i.e 2nd element from here   
-};
-
-const RoomPage = ({ userName, travelMode }) => {
-    const [users, setusers] = useState({}); // default as empty object
-    const [selectedUser, setSelectedUser] = useState(null);
-    const [roomId, setRoomId] = useState(getRoomIdfromURL() || "");
-    const [copied, setCopied] = useState(false);
-    const [windowWidth, setWindowWidth] = useState(window.innerWidth);
-    const [isSidebarOpen, setIsSidebarOpen] = useState(window.innerWidth >= 768);
-    const [route, setRoute] = useState(null);
-    const [loadingRoute, setLoadingRoute] = useState(false);
-    const [myLocation, setMyLocation] = useState(null);
-
-    // This useEffect handles the core logic for joining the room and tracking location
-    useEffect(() => {
-        // Adding the user to the room
-        const currentRoomId = getRoomIdfromURL();
-        if (!currentRoomId) return;
-        setRoomId(currentRoomId);
-        joinRoom(currentRoomId, userName, travelMode); // socket.js se milega , vaha pr create kiya hai ye
-
-        // Location
-        if (!navigator.geolocation) { // location not supported ->send alert
-            alert('Geolocation is not supported by your browser');
-            return;
-        }
-
-        const handleLocation = (position) => { // send the lat and lng to the sockethandler to calculate the distance,eta and the route
-            const { latitude, longitude } = position.coords;
-            setMyLocation({ lat: latitude, lng: longitude }); // store my location locally
-            emitLocationUpdate({ lat: latitude, lng: longitude, name: userName, mode: travelMode }); // socket.js mai create kiya hai , emitLocationUpdate se hum location bhej denge , aur socketHandler.js usko get kar lega
-        };
-
-        const handleError = (error) => { // permission denied then , we cannot use the website
-            alert('Location Permission Denied. Please allow location Access!');
-        };
-
-        const watchId = navigator.geolocation.watchPosition(handleLocation, handleError, { // getcurrentposition
-            enableHighAccuracy: true,
-            maximumAge: 0, // not storing any cache
-            timeout: 6000, // maximum time (in ms) the browser will wait to get a location fix before throwing an error.
-        });
-
-        listenforUsersUpdates(setusers);
-
-        return () => {
-            socket.off('user-offline');
-            navigator.geolocation.clearWatch(watchId);
-        };
-    }, [userName, travelMode]);
-
-    // This useEffect handles fetching the route when a user is selected
-    useEffect(() => {
-        const fetchRoute = async () => {
-            if (!selectedUser) {
-                setRoute(null);
-                setLoadingRoute(false);
-                return;
-            }
-            const me = users[socket.id];
-            if (!me) return;
-            setLoadingRoute(true);
-            try {
-                const API_BASE = process.env.REACT_APP_API_URL || "http://localhost:4000";
-                const res = await axios.post(`${API_BASE}/api/locations/route`, {
-                    start: { lat: me.lat, lng: me.lng },
-                    end: { lat: selectedUser.lat, lng: selectedUser.lng },
-                    mode: travelMode,
-                });
-                setRoute(res.data);
-            } catch (err) {
-                console.error("Route fetch error:", err.response?.data || err.message);
-                setRoute(null);
-            }
-            setLoadingRoute(false);
-        };
-        fetchRoute();
-    }, [selectedUser, users, travelMode]);
-
-    //  FIX: remove duplicate usersWithMe definition (keep only this object merge)
-    const usersWithMe = {
-        ...users,
-        ...(myLocation ? { [socket.id]: { lat: myLocation.lat, lng: myLocation.lng, userId: socket.id, name: userName || "Me" } } : {})
-    };
-
-    // Creates a shareable room link
-    const roomUrl = `${window.location.origin}/room/${encodeURIComponent(roomId)}`;
-
-    return (
-        <div className="relative flex flex-col h-screen overflow-hidden">
-            {/* Top Bar */}
-            <div className="sticky top-0 z-30 bg-blue-500 p-2 text-white shadow-lg">
-                <div className="flex flex-col md:flex-row items-center justify-between ">
-                    <div className="flex items-center w-full md:w-auto">
-                        {/* For mobile view Side Bar */}
-                        {windowWidth < 768 && !isSidebarOpen && (
-                            <button
-                                className="md:hidden mr-3 bg-white/10 hover:bg-white/20 p-2 rounded-full border border-white/20 transition"
-                                onClick={() => setIsSidebarOpen(true)}
-                                aria-label="Open sidebar"
-                            >
-                                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-                                </svg>
-                            </button>
-                        )}
-                        <span className="ml-10 text-lg font-semibold tracking-wide text-white ">Room:</span>
-                        <span className="ml-2 px-2 py-1 bg-white text-purple-700 rounded-md font-mono text-sm">{roomId}</span>
-                    </div>
-
-                    <div className="flex flex-col justify-center self-center sm:flex-row items-center gap-2 mt-2 md:mt-0 w-full md:w-auto">
-                        <div className="flex items-center w-full sm:w-auto max-w-md">
-                            <input
-                                type="text"
-                                value={roomUrl}
-                                readOnly // we can not edit this
-                                className="flex-1 border-none px-3 py-2 rounded-l-md text-sm text-gray-700 border-green-500 border-2 bg-white focus:outline-none"
-                                onFocus={e => e.target.select()} // Jab input pe click/focus hoga, pura text auto select ho jaayega.
-                            />
-                            {/* Copy Room Link */}
-                            <button
-                                onClick={() => {
-                                    // 1. Copy text to clipboard
-                                    navigator.clipboard.writeText(roomUrl);
-                                    // 2. State update → show "Copied!" instead of "Copy"
-                                    setCopied(true);
-                                    // 3. After 1.5 sec, reset back to "Copy"
-                                    setTimeout(() => setCopied(false), 1500);
-                                }}
-                                className="bg-green-500 hover:bg-green-600  text-white px-3 py-2 rounded-r-md text-sm font-medium transition "
-                                id="copyBtn"
-                            >
-                                {copied ? "Copied!" : "Copy"}
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            {/* Main Content */}
-            <div className="relative flex flex-1 overflow-hidden">
-                {isSidebarOpen && (
-                    // Sidebar mai jo jo chize display krwani ho vo daaldo ,
-                    // Sidebar component kahi aur bana rkha hai ,idhr isme daalo aur jo props chahiye vo bhej do
-                    <Sidebar
-                        travelMode={travelMode}
-                        username={userName || "Me"}
-                        users={usersWithMe}
-                        onSelectUser={setSelectedUser}
-                        selectedUserId={selectedUser?.userId}
-                        isOpen={isSidebarOpen}
-                        setIsOpen={setIsSidebarOpen}
-                        windowWidth={windowWidth}
-                        mySocketId={socket.id}
-                    />
-                )}
-
-                <div className="flex-1 relative z-0 bg-gradient-to-br from-blue-50 to-purple-100">
-                    {loadingRoute && (
-                        <div className="absolute inset-0 z-10 flex items-center justify-center bg-white bg-opacity-70 backdrop-blur-sm">
-                            <div className="animate-spin rounded-full h-16 w-16 border-t-4 border-blue-500 border-solid"></div>
-                        </div>
-                    )}
-                    <Map
-                        users={usersWithMe}
-                        mySocketId={socket.id}
-                        route={route}
-                        selectedUser={selectedUser}
-                        selectedUserId={selectedUser?.userId}
-                    />
-                </div>
-            </div>
-        </div>
-    );
-};
-
-export default RoomPage;
+<file path="client/vercel.json">
+{
+  "version": 2,
+  "builds": [
+    {
+      "src": "package.json",
+      "use": "@vercel/static-build",
+      "config": { "distDir": "dist" }
+    }
+  ],
+  "routes": [
+    { "handle": "filesystem" },
+    { "src": "/.*", "dest": "/index.html" }
+  ]
+}
 </file>
 
 <file path="client/vite.config.js">
@@ -1081,6 +712,204 @@ router.post('/route', getRoute);
 module.exports = router;
 </file>
 
+<file path="client/index.html">
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/x-icon" href="/favicon.ico" />
+    <title>RouteShare</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>
+</file>
+
+<file path="client/src/components/Map.jsx">
+import React, { useEffect, useState } from "react";
+import {
+  MapContainer,
+  TileLayer,
+  Marker,
+  Popup,
+  Polyline,
+  useMap,
+} from "react-leaflet";
+import L from "leaflet";
+import "leaflet/dist/leaflet.css";
+
+import mypin from "../assets/mypin.png";
+
+const Map = ({ users, mySocketId, route, selectedUser, selectedUserId }) => {
+  const [currentLocation, setCurrentLocation] = useState(null);
+  const [theme, setTheme] = useState("streets");
+
+  // Available map themes
+  const themes = {
+    streets: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+    dark: "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
+    light: "https://tiles.stadiamaps.com/tiles/alidade_smooth/{z}/{x}/{y}{r}.png",
+    satellite:
+      "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+  };
+
+  // Get current device location once on mount
+  useEffect(() => {
+    navigator.geolocation.getCurrentPosition((position) => {
+      const { latitude, longitude } = position.coords;
+      setCurrentLocation([latitude, longitude]);
+    });
+  }, []);
+
+  // Fit map bounds to show me + selected user
+  function FitBounds({ me, selectedUser }) {
+    const map = useMap();
+    useEffect(() => {
+      if (
+        me?.lat &&
+        me?.lng &&
+        selectedUser?.lat &&
+        selectedUser?.lng
+      ) {
+        const bounds = L.latLngBounds([
+          [me.lat, me.lng],
+          [selectedUser.lat, selectedUser.lng],
+        ]);
+        map.fitBounds(bounds, { padding: [80, 80] });
+      } else if (me?.lat && me?.lng) {
+        map.setView([me.lat, me.lng], 17);
+      }
+    }, [me, selectedUser, map]);
+    return null;
+  }
+
+  // Always treat users as an array
+  const usersArray = Array.isArray(users) ? users : Object.values(users || {});
+
+  // Find myself
+  const me = usersArray.find((u) => u.userId === mySocketId);
+
+  // Extract polyline coordinates from GeoJSON route (from API like OpenRoute)
+  let polylineCoords = [];
+  if (route?.features?.[0]) {
+    polylineCoords = route.features[0].geometry.coordinates.map(
+      ([lng, lat]) => [lat, lng]
+    );
+  }
+
+  return (
+    <div className="relative w-full h-full">
+      {/* Theme Selector Dropdown */}
+      <div className="absolute top-4 left-4 z-[1000] bg-white rounded shadow p-2">
+        <select
+          value={theme}
+          onChange={(e) => setTheme(e.target.value)}
+          className="p-1 border rounded text-sm"
+        >
+          <option value="streets">Streets</option>
+          <option value="light">Light</option>
+          <option value="dark">Dark</option>
+          <option value="satellite">Satellite</option>
+        </select>
+      </div>
+
+      <MapContainer
+        center={currentLocation || [51.505, -0.09]}
+        zoom={18}
+        style={{ height: "100vh", width: "100%" }}
+        className="shadow-lg"
+      >
+        <FitBounds me={me} selectedUser={selectedUser} />
+
+        {/* Dynamic Map Theme */}
+        <TileLayer attribution="slrTech" url={themes[theme]} />
+
+        {/* Your marker */}
+        {me?.lat && me?.lng && (
+          <Marker
+            position={[me.lat, me.lng]}
+            icon={new L.Icon({ iconUrl: mypin, iconSize: [70, 70] })}
+          >
+            <Popup>
+              <span className="font-bold text-lg">{me.name}</span>
+              <br />
+              <span className="text-sm text-gray-600">You are here</span>
+            </Popup>
+          </Marker>
+        )}
+
+        {/* Other users */}
+        {usersArray
+          .filter((user) => user.userId !== mySocketId)
+          .map(
+            (user) =>
+              user.lat &&
+              user.lng && (
+                <Marker
+                  key={user.userId}
+                  position={[user.lat, user.lng]}
+                  icon={
+                    selectedUserId === user.userId
+                      ? new L.Icon({
+                          iconUrl: mypin,
+                          iconSize: [60, 80],
+                          className: "border-4 border-yellow-500",
+                        })
+                      : new L.Icon({ iconUrl: mypin, iconSize: [70, 70] })
+                  }
+                >
+                  <Popup>
+                    <span
+                      className={
+                        selectedUserId === user.userId
+                          ? "font-bold text-green-600"
+                          : ""
+                      }
+                    >
+                      User: {user.name}
+                    </span>
+                    <br />
+                    Distance: {user.distance ?? "N/A"} km <br />
+                    ETA: {user.eta ?? "N/A"} min
+                  </Popup>
+                </Marker>
+              )
+          )}
+
+        {/* Route polyline (from API like OpenRouteService) */}
+        {polylineCoords.length > 0 && (
+          <Polyline
+            positions={polylineCoords}
+            color="#F9A825"
+            weight={6}
+            opacity={0.8}
+          />
+        )}
+
+        {/* Blue line between me and selected user */}
+        {me && selectedUser && me.lat && me.lng && selectedUser.lat && selectedUser.lng && (
+          <Polyline
+            positions={[
+              [me.lat, me.lng],
+              [selectedUser.lat, selectedUser.lng],
+            ]}
+            color="blue"
+            weight={5}
+            dashArray="6,6"
+            opacity={0.9}
+          />
+        )}
+      </MapContainer>
+    </div>
+  );
+};
+
+export default Map;
+</file>
+
 <file path="client/src/index.css">
 @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;700&display=swap');
 @import "tailwindcss";
@@ -1127,6 +956,199 @@ body {
     "vite": "^7.1.2"
   }
 }
+</file>
+
+<file path="client/src/pages/RoomPage.jsx">
+import React, { useEffect, useState } from 'react';
+import axios from 'axios';
+import Map from '../components/Map'
+import Sidebar from '../components/Sidebar';
+import socket, { listenforUsersUpdates, emitLocationUpdate, joinRoom } from '../socket.js'
+
+const getRoomIdfromURL = () => {
+    const match = window.location.pathname.match(/\/room\/([a-zA-Z0-9_-]+)/);
+    //Gives the path part of the current page’s URL (without domain and query params).     
+    // https://example.com/room/abcd1234     
+    // then window.location.pathname will give // "/room/abcd1234"      
+    return match ? match[1] : null;
+      // "/room/abcd1234".match(/\/room\/([a-zA-Z0-9_-]+)/); -> it will give ["/room/abcd1234", "abcd1234"] this as answer , and we will take the match[1] i.e 2nd element from here   
+};
+
+const RoomPage = ({ userName, travelMode }) => {
+    const [users, setusers] = useState({}); // default as empty object
+    const [selectedUser, setSelectedUser] = useState(null);
+    const [roomId, setRoomId] = useState(getRoomIdfromURL() || "");
+    const [copied, setCopied] = useState(false);
+    const [windowWidth, setWindowWidth] = useState(window.innerWidth);
+    const [isSidebarOpen, setIsSidebarOpen] = useState(window.innerWidth >= 768);
+    const [route, setRoute] = useState(null);
+    const [loadingRoute, setLoadingRoute] = useState(false);
+    const [myLocation, setMyLocation] = useState(null);
+
+    // This useEffect handles the core logic for joining the room and tracking location
+    useEffect(() => {
+        // Adding the user to the room
+        const currentRoomId = getRoomIdfromURL();
+        if (!currentRoomId) return;
+        setRoomId(currentRoomId);
+        joinRoom(currentRoomId, userName, travelMode); // socket.js se milega , vaha pr create kiya hai ye
+
+        // Location
+        if (!navigator.geolocation) { // location not supported ->send alert
+            alert('Geolocation is not supported by your browser');
+            return;
+        }
+
+        const handleLocation = (position) => { // send the lat and lng to the sockethandler to calculate the distance,eta and the route
+            const { latitude, longitude } = position.coords;
+            setMyLocation({ lat: latitude, lng: longitude }); // store my location locally
+            emitLocationUpdate({ lat: latitude, lng: longitude, name: userName, mode: travelMode }); // socket.js mai create kiya hai , emitLocationUpdate se hum location bhej denge , aur socketHandler.js usko get kar lega
+        };
+
+        const handleError = (error) => { // permission denied then , we cannot use the website
+            alert('Location Permission Denied. Please allow location Access!');
+        };
+
+        const watchId = navigator.geolocation.watchPosition(handleLocation, handleError, { // getcurrentposition
+            enableHighAccuracy: true,
+            maximumAge: 0, // not storing any cache
+            timeout: 6000, // maximum time (in ms) the browser will wait to get a location fix before throwing an error.
+        });
+
+        listenforUsersUpdates(setusers);
+
+        return () => {
+            socket.off('user-offline');
+            navigator.geolocation.clearWatch(watchId);
+        };
+    }, [userName, travelMode]);
+
+    // This useEffect handles fetching the route when a user is selected
+    useEffect(() => {
+        const fetchRoute = async () => {
+            if (!selectedUser) {
+                setRoute(null);
+                setLoadingRoute(false);
+                return;
+            }
+            const me = users[socket.id];
+            if (!me) return;
+            setLoadingRoute(true);
+            try {
+                const API_BASE = process.env.VITE_SERVER_URL || "http://localhost:4000";
+                const res = await axios.post(`${API_BASE}/api/locations/route`, {
+                    start: { lat: me.lat, lng: me.lng },
+                    end: { lat: selectedUser.lat, lng: selectedUser.lng },
+                    mode: travelMode,
+                });
+                setRoute(res.data);
+            } catch (err) {
+                console.error("Route fetch error:", err.response?.data || err.message);
+                setRoute(null);
+            }
+            setLoadingRoute(false);
+        };
+        fetchRoute();
+    }, [selectedUser, users, travelMode]);
+
+    //  remove duplicate usersWithMe definition (keep only this object merge)
+    const usersWithMe = {
+        ...users,
+        ...(myLocation ? { [socket.id]: { lat: myLocation.lat, lng: myLocation.lng, userId: socket.id, name: userName || "Me" } } : {})
+    };
+
+    // Creates a shareable room link
+    const roomUrl = `${window.location.origin}/room/${encodeURIComponent(roomId)}`;
+
+    return (
+        <div className="relative flex flex-col h-screen overflow-hidden">
+            {/* Top Bar */}
+            <div className="sticky top-0 z-30 bg-blue-500 p-2 text-white shadow-lg">
+                <div className="flex flex-col md:flex-row items-center justify-between ">
+                    <div className="flex items-center w-full md:w-auto">
+                        {/* For mobile view Side Bar */}
+                        {windowWidth < 768 && !isSidebarOpen && (
+                            <button
+                                className="md:hidden mr-3 bg-white/10 hover:bg-white/20 p-2 rounded-full border border-white/20 transition"
+                                onClick={() => setIsSidebarOpen(true)}
+                                aria-label="Open sidebar"
+                            >
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                                </svg>
+                            </button>
+                        )}
+                        <span className="ml-10 text-lg font-semibold tracking-wide text-white ">Room:</span>
+                        <span className="ml-2 px-2 py-1 bg-white text-purple-700 rounded-md font-mono text-sm">{roomId}</span>
+                    </div>
+
+                    <div className="flex flex-col justify-center self-center sm:flex-row items-center gap-2 mt-2 md:mt-0 w-full md:w-auto">
+                        <div className="flex items-center w-full sm:w-auto max-w-md">
+                            <input
+                                type="text"
+                                value={roomUrl}
+                                readOnly // we can not edit this
+                                className="flex-1 border-none px-3 py-2 rounded-l-md text-sm text-gray-700 border-green-500 border-2 bg-white focus:outline-none"
+                                onFocus={e => e.target.select()} // Jab input pe click/focus hoga, pura text auto select ho jaayega.
+                            />
+                            {/* Copy Room Link */}
+                            <button
+                                onClick={() => {
+                                    // 1. Copy text to clipboard
+                                    navigator.clipboard.writeText(roomUrl);
+                                    // 2. State update → show "Copied!" instead of "Copy"
+                                    setCopied(true);
+                                    // 3. After 1.5 sec, reset back to "Copy"
+                                    setTimeout(() => setCopied(false), 1500);
+                                }}
+                                className="bg-green-500 hover:bg-green-600  text-white px-3 py-2 rounded-r-md text-sm font-medium transition "
+                                id="copyBtn"
+                            >
+                                {copied ? "Copied!" : "Copy"}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            {/* Main Content */}
+            <div className="relative flex flex-1 overflow-hidden">
+                {isSidebarOpen && (
+                    // Sidebar mai jo jo chize display krwani ho vo daaldo ,
+                    // Sidebar component kahi aur bana rkha hai ,idhr isme daalo aur jo props chahiye vo bhej do
+                    <Sidebar
+                        travelMode={travelMode}
+                        username={userName || "Me"}
+                        users={usersWithMe}
+                        onSelectUser={setSelectedUser}
+                        selectedUserId={selectedUser?.userId}
+                        isOpen={isSidebarOpen}
+                        setIsOpen={setIsSidebarOpen}
+                        windowWidth={windowWidth}
+                        mySocketId={socket.id}
+                    />
+                )}
+
+                <div className="flex-1 relative z-0 bg-gradient-to-br from-blue-50 to-purple-100">
+                    {loadingRoute && (
+                        <div className="absolute inset-0 z-10 flex items-center justify-center bg-white bg-opacity-70 backdrop-blur-sm">
+                            <div className="animate-spin rounded-full h-16 w-16 border-t-4 border-blue-500 border-solid"></div>
+                        </div>
+                    )}
+                    <Map
+                        users={usersWithMe}
+                        mySocketId={socket.id}
+                        route={route}
+                        selectedUser={selectedUser}
+                        selectedUserId={selectedUser?.userId}
+                    />
+                </div>
+            </div>
+        </div>
+    );
+};
+
+export default RoomPage;
 </file>
 
 <file path="server/controllers/locationcontroller.js">
@@ -1274,40 +1296,6 @@ exports.getRoute = async (req, res) => {
 }
 </file>
 
-<file path="client/src/socket.js">
-import { io } from "socket.io-client";
-
-const socket = io(`http://localhost:4000`); //frontend socket connection with backend server.io
-
-export const joinRoom = (roomId, name, mode) => {
-    //Frontend se backend ko event bhej rahe ho (joinRoom), taki user ek particular room me join ho jaye.
-    //Ab name bhi pass karenge taki backend user ka naam store kar sake.
-    socket.emit('joinRoom', { roomId, name, mode });
-}
-
-export const emitLocationUpdate = (data) => {
-    //Frontend apna location data backend ko bhejta hai.
-    socket.emit("locationUpdate", data);
-}
-
-export const listenforUsersUpdates = (callback) => {
-    //Frontend backend ke events sunega (jaise koi user offline hua ya location update hui).
-
-    socket.on("locationUpdate", (data) => {
-        callback(data); 
-        //callback(data) → is case mein callback setusers hai, jo React ka state updater hai 
-        //→ iska matlab UI ko turant update kar do latest users list ke saath.
-    });
-
-    socket.on("user-offline", (data) => {
-        callback(data); 
-        //Ye tab chalega jab koi user disconnect ho jaye → UI update hoga accordingly.
-    });
-}
-
-export default socket;
-</file>
-
 <file path="client/src/App.jsx">
 import { useState } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
@@ -1363,6 +1351,43 @@ function App() {
 }
 
 export default App;
+</file>
+
+<file path="client/src/socket.js">
+import { io } from "socket.io-client";
+
+const SERVER_URL = import.meta.env.VITE_SERVER_URL || "http://localhost:4000";
+const socket = io(SERVER_URL, { transports: ["websocket", "polling"] });
+
+ //frontend socket connection with backend server.io
+
+export const joinRoom = (roomId, name, mode) => {
+    //Frontend se backend ko event bhej rahe ho (joinRoom), taki user ek particular room me join ho jaye.
+    //Ab name bhi pass karenge taki backend user ka naam store kar sake.
+    socket.emit('joinRoom', { roomId, name, mode });
+}
+
+export const emitLocationUpdate = (data) => {
+    //Frontend apna location data backend ko bhejta hai.
+    socket.emit("locationUpdate", data);
+}
+
+export const listenforUsersUpdates = (callback) => {
+    //Frontend backend ke events sunega (jaise koi user offline hua ya location update hui).
+
+    socket.on("locationUpdate", (data) => {
+        callback(data); 
+        //callback(data) → is case mein callback setusers hai, jo React ka state updater hai 
+        //→ iska matlab UI ko turant update kar do latest users list ke saath.
+    });
+
+    socket.on("user-offline", (data) => {
+        callback(data); 
+        //Ye tab chalega jab koi user disconnect ho jaye → UI update hoga accordingly.
+    });
+}
+
+export default socket;
 </file>
 
 <file path="server/server.js">
