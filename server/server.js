@@ -7,6 +7,9 @@ const locationRoute=require('./routes/locationRoute')
 const dotenv=require("dotenv");
 dotenv.config();
 
+// Add this line to debug (Remove it later!)
+console.log("Loaded API Key:", process.env.ORS_api_key ? "Yes (Key Found)" : "No (Undefined)");
+
 const app=express();
 
 const server=http.createServer(app);

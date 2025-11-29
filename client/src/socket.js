@@ -31,4 +31,14 @@ export const listenforUsersUpdates = (callback) => {
     });
 }
 
+export const setMeetingPoint = (coords) => {
+    socket.emit("setDestination", coords);
+}
+
+export const listenForDestination = (callback) => {
+    socket.on("destinationUpdate", (coords) => {
+        callback(coords);
+    });
+}
+
 export default socket;

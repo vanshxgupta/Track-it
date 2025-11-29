@@ -23,7 +23,14 @@ function buildUsersObject(roomId) {
     const usersObj = {};
     if (!roomUsers[roomId]) return usersObj;
     Object.keys(roomUsers[roomId]).forEach((id) => {
+        // *** FIX: Skip the destination key so we don't crash trying to read .name from it ***
+        if (id === 'destination') return;
+
         const u = roomUsers[roomId][id];
+        
+        // Safety check to ensure u exists
+        if (!u) return;
+
         usersObj[id] = {
             userId: id,
             name: u.name || "No Username",
@@ -59,6 +66,7 @@ const handleSocketConnection=(socket,io)=>{//Jab bhi koi naya client connect hot
         
         if(!roomUsers[roomId]){
             roomUsers[roomId]={}; //if room doesn't exist , create a empty object
+            roomUsers[roomId].destination = null;// Initialize destination
         }
         // room ke andar user ko add kar diya, name bhi save kar liya
         roomUsers[roomId][socket.id] = { 
@@ -70,60 +78,126 @@ const handleSocketConnection=(socket,io)=>{//Jab bhi koi naya client connect hot
 
         // update sabko
         io.to(roomId).emit('locationUpdate', buildUsersObject(roomId));
+
+        // *** NEW: If a destination already exists, send it to the new user ***
+        if (roomUsers[roomId].destination) {
+            socket.emit('destinationUpdate', roomUsers[roomId].destination);
+        }
     });
 
+// socket.on('locationUpdate', async (data) => {
+//     const { lat, lng, mode } = data; 
+//     const roomId = socket.roomId;
+
+//     if (!roomId || !username) return;
+
+//     // Ensure user object exists
+//     if (!roomUsers[roomId][socket.id]) {
+//         roomUsers[roomId][socket.id] = { username };
+//     }
+//     roomUsers[roomId][socket.id].lat = lat;
+//     roomUsers[roomId][socket.id].lng = lng;
+
+//     const me = roomUsers[roomId][socket.id];
+//     const usersObj = {};
+
+//     // Build users object keyed by username instead of socket.id
+//     await Promise.all(
+//         Object.keys(roomUsers[roomId]).map(async (id) => {
+//             const user = roomUsers[roomId][id];
+//             if (!user || !user.username) return;
+
+//             usersObj[user.username] = {
+//                 username: user.username,
+//                 lat: user.lat,
+//                 lng: user.lng,
+//                 distance: null,
+//                 eta: null,
+//             };
+
+//             if (me.lat != null && me.lng != null) {
+//                 if (id === socket.id) {
+//                     usersObj[user.username].distance = "0 km";
+//                     usersObj[user.username].eta = "0 mins";
+//                 } else if (user.lat != null && user.lng != null) {
+//                     try {
+//                         const result = await calculateDistanceAndETA(
+//                             { lat: user.lat, lng: user.lng },
+//                             { lat: me.lat, lng: me.lng },
+//                             mode || 'car'
+//                         );
+//                         usersObj[user.username].distance = result.distance;
+//                         usersObj[user.username].eta = result.duration;
+//                     } catch {
+//                         usersObj[user.username].distance = "N/A";
+//                         usersObj[user.username].eta = "N/A";
+//                     }
+//                 }
+//             }
+//         })
+//     );
+
+//     io.to(roomId).emit('locationUpdate', usersObj);
+// });
+// In server/socketHandlers.js
+
 socket.on('locationUpdate', async (data) => {
-    const { lat, lng, mode, username } = data; // make sure client sends username
+    const { lat, lng, mode } = data; // We don't need username here, we already have it in roomUsers
     const roomId = socket.roomId;
 
-    if (!roomId || !username) return;
+    if (!roomId || !roomUsers[roomId] || !roomUsers[roomId][socket.id]) return;
 
-    // Ensure user object exists
-    if (!roomUsers[roomId][socket.id]) {
-        roomUsers[roomId][socket.id] = { username };
-    }
+    // 1. Update the specific user's location
     roomUsers[roomId][socket.id].lat = lat;
     roomUsers[roomId][socket.id].lng = lng;
+    roomUsers[roomId][socket.id].mode = mode; // Update mode dynamically
 
     const me = roomUsers[roomId][socket.id];
+    
+    // 2. Build the response object (Keep keys as Socket IDs!)
     const usersObj = {};
+    const promises = Object.keys(roomUsers[roomId]).map(async (id) => {
+        // *** FIX: Skip destination key here too ***
+        if (id === 'destination') return;
 
-    // Build users object keyed by username instead of socket.id
-    await Promise.all(
-        Object.keys(roomUsers[roomId]).map(async (id) => {
-            const user = roomUsers[roomId][id];
-            if (!user || !user.username) return;
+        const user = roomUsers[roomId][id];
+        
+        // Safety check to ensure user exists
+        if (!user) return;
 
-            usersObj[user.username] = {
-                username: user.username,
-                lat: user.lat,
-                lng: user.lng,
-                distance: null,
-                eta: null,
-            };
+        // Initialize user data structure
+        usersObj[id] = {
+            userId: id, 
+            name: user.name,
+            lat: user.lat,
+            lng: user.lng,
+            mode: user.mode,
+            distance: null,
+            eta: null,
+        };
 
-            if (me.lat != null && me.lng != null) {
-                if (id === socket.id) {
-                    usersObj[user.username].distance = "0 km";
-                    usersObj[user.username].eta = "0 mins";
-                } else if (user.lat != null && user.lng != null) {
-                    try {
-                        const result = await calculateDistanceAndETA(
-                            { lat: user.lat, lng: user.lng },
-                            { lat: me.lat, lng: me.lng },
-                            mode || 'car'
-                        );
-                        usersObj[user.username].distance = result.distance;
-                        usersObj[user.username].eta = result.duration;
-                    } catch {
-                        usersObj[user.username].distance = "N/A";
-                        usersObj[user.username].eta = "N/A";
-                    }
-                }
+        // 3. Calculate Distance (Only if both have location)
+        if (me.lat && me.lng && user.lat && user.lng && id !== socket.id) {
+            try {
+                // FORCE 'driving-car' if the mathematical distance is huge to prevent ORS errors
+                // or just use the user's mode. 
+                // For stability, let's use the user's mode but fallback safely.
+                const result = await calculateDistanceAndETA(
+                    { lat: user.lat, lng: user.lng },
+                    { lat: me.lat, lng: me.lng },
+                    user.mode 
+                );
+                usersObj[id].distance = result.distance;
+                usersObj[id].eta = result.duration;
+            } catch (err) {
+                console.log(`ORS Error for ${user.name}:`, err.message);
+                usersObj[id].distance = "Far"; // Indicate they are far/unreachable
+                usersObj[id].eta = "-";
             }
-        })
-    );
+        }
+    });
 
+    await Promise.all(promises);
     io.to(roomId).emit('locationUpdate', usersObj);
 });
 
@@ -142,10 +216,32 @@ socket.on('locationUpdate', async (data) => {
             io.to(roomId).emit('user-offline', usersObj);
 
             // If no users left in the room, clean up the room entry
-            if (Object.keys(roomUsers[roomId]).length === 0) {
+            const keys = Object.keys(roomUsers[roomId]);
+            // Check if room is empty OR only contains 'destination' key
+            if (keys.length === 0 || (keys.length === 1 && keys[0] === 'destination')) {
                 delete roomUsers[roomId];
             }
         }
+    });
+
+    //set destinnation
+    socket.on('setDestination', (coords) => {
+        const roomId = socket.roomId;
+        if (roomId && roomUsers[roomId]) {
+            // Store destination in the room object (but outside the user list logic if possible, 
+            // or just attach it to the roomUsers object if you want to keep it simple)
+            // Better approach: Store it as a property of the room.
+            roomUsers[roomId].destination = coords; // { lat, lng }
+            
+            // Broadcast the new destination to everyone
+            io.to(roomId).emit('destinationUpdate', coords);
+        }
+    });
+
+    // Inside handleSocketConnection
+    socket.on("sendMessage", (data) => {
+        // Broadcast to others in the room (excluding sender if you handled sender locally)
+        socket.to(data.roomId).emit("receiveMessage", data);
     });
 
 }
