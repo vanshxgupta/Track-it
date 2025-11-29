@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import {
   MapContainer,
   TileLayer,
@@ -19,33 +19,48 @@ const isValidCoord = (lat, lng) => {
     return typeof lat === 'number' && typeof lng === 'number' && !isNaN(lat) && !isNaN(lng);
 };
 
+// 1. IMPROVED FIT BOUNDS with Initial Center Fix
 function FitBounds({ me, selectedUser, destination, route, destRoute }) {
   const map = useMap();
+  const isInitialized = useRef(false); // Ref to track if we have centered once
 
   useEffect(() => {
     try {
         const points = [];
+        
+        // Only push VALID coordinates
         if (me && isValidCoord(me.lat, me.lng)) points.push([me.lat, me.lng]);
         if (selectedUser && isValidCoord(selectedUser.lat, selectedUser.lng)) points.push([selectedUser.lat, selectedUser.lng]);
         if (destination && isValidCoord(destination.lat, destination.lng)) points.push([destination.lat, destination.lng]);
 
-        // Prioritize Route Bounding Boxes
+        // Priority 1: Fit Route Bounding Box (User Route)
         if (route?.bbox && route.bbox.length === 4) {
             const [minLon, minLat, maxLon, maxLat] = route.bbox;
-            map.fitBounds([[minLat, minLon], [maxLat, maxLon]], { padding: [50, 50] });
+            if (isValidCoord(minLat, minLon) && isValidCoord(maxLat, maxLon)) {
+                map.fitBounds([[minLat, minLon], [maxLat, maxLon]], { padding: [50, 50] });
+            }
         } 
+        // Priority 2: Fit Destination Route Bounding Box
         else if (destRoute?.bbox && destRoute.bbox.length === 4) {
              const [minLon, minLat, maxLon, maxLat] = destRoute.bbox;
              map.fitBounds([[minLat, minLon], [maxLat, maxLon]], { padding: [50, 50] });
         }
+        // Priority 3: Fit Multiple Points (Me + Friend or Me + Dest)
         else if (points.length > 1) {
             const bounds = L.latLngBounds(points);
-            if (bounds.isValid()) map.fitBounds(bounds, { padding: [80, 80] });
+            if (bounds.isValid()) {
+                map.fitBounds(bounds, { padding: [80, 80] });
+            }
         } 
+        // Priority 4: Initial Center on ME (Runs only once)
+        else if (points.length === 1 && !isInitialized.current) {
+             map.setView(points[0], 18);
+             isInitialized.current = true; // Mark as initialized so it doesn't snap back later
+        }
     } catch (err) {
         console.warn("FitBounds error ignored:", err);
     }
-  }, [selectedUser?.userId, destination, route, destRoute, map]); 
+  }, [me, selectedUser, destination, route, destRoute, map]); // Added 'me' back to dependencies
   return null;
 }
 
@@ -63,9 +78,9 @@ const MapClickHandler = ({ onSetDestination }) => {
 const Map = ({ 
     users, 
     mySocketId, 
-    route,         // Route to Selected User
-    destRoute,     // Route to Destination
-    destStats,     // Stats for Destination
+    route,         
+    destRoute,     
+    destStats,     
     selectedUser, 
     selectedUserId, 
     onSetDestination, 
