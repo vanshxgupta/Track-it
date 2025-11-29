@@ -14,62 +14,55 @@ import "leaflet/dist/leaflet.css";
 import axios from "axios"; 
 import { FaSearch, FaMapMarkerAlt, FaLocationArrow } from "react-icons/fa"; 
 
-// Helper to safely check if a coordinate is valid numbers
+// Helper to safely check coordinates
 const isValidCoord = (lat, lng) => {
     return typeof lat === 'number' && typeof lng === 'number' && !isNaN(lat) && !isNaN(lng);
 };
 
-// 1. IMPROVED FIT BOUNDS with Initial Center Fix
-function FitBounds({ me, selectedUser, destination, route, destRoute }) {
+// --- LOGIC CONTROLLER COMPONENT ---
+function MapController({ me, route, destRoute, selectedUserId }) {
   const map = useMap();
-  const isInitialized = useRef(false); // Ref to track if we have centered once
+  const isInitialized = useRef(false);
+  const lastRouteId = useRef(null);
+  const lastSelectedUser = useRef(null);
 
   useEffect(() => {
-    try {
-        const points = [];
-        
-        // Only push VALID coordinates
-        if (me && isValidCoord(me.lat, me.lng)) points.push([me.lat, me.lng]);
-        if (selectedUser && isValidCoord(selectedUser.lat, selectedUser.lng)) points.push([selectedUser.lat, selectedUser.lng]);
-        if (destination && isValidCoord(destination.lat, destination.lng)) points.push([destination.lat, destination.lng]);
-
-        // Priority 1: Fit Route Bounding Box (User Route)
-        if (route?.bbox && route.bbox.length === 4) {
-            const [minLon, minLat, maxLon, maxLat] = route.bbox;
-            if (isValidCoord(minLat, minLon) && isValidCoord(maxLat, maxLon)) {
-                map.fitBounds([[minLat, minLon], [maxLat, maxLon]], { padding: [50, 50] });
-            }
-        } 
-        // Priority 2: Fit Destination Route Bounding Box
-        else if (destRoute?.bbox && destRoute.bbox.length === 4) {
-             const [minLon, minLat, maxLon, maxLat] = destRoute.bbox;
-             map.fitBounds([[minLat, minLon], [maxLat, maxLon]], { padding: [50, 50] });
-        }
-        // Priority 3: Fit Multiple Points (Me + Friend or Me + Dest)
-        else if (points.length > 1) {
-            const bounds = L.latLngBounds(points);
-            if (bounds.isValid()) {
-                map.fitBounds(bounds, { padding: [80, 80] });
-            }
-        } 
-        // Priority 4: Initial Center on ME (Runs only once)
-        else if (points.length === 1 && !isInitialized.current) {
-             map.setView(points[0], 18);
-             isInitialized.current = true; // Mark as initialized so it doesn't snap back later
-        }
-    } catch (err) {
-        console.warn("FitBounds error ignored:", err);
+    // 1. Initial Load: Center on "Me" exactly ONCE
+    if (me && isValidCoord(me.lat, me.lng) && !isInitialized.current) {
+        map.setView([me.lat, me.lng], 18);
+        isInitialized.current = true;
     }
-  }, [me, selectedUser, destination, route, destRoute, map]); // Added 'me' back to dependencies
+
+    // 2. New User Selected: Fit bounds (ONCE per selection)
+    if (selectedUserId && selectedUserId !== lastSelectedUser.current) {
+        lastSelectedUser.current = selectedUserId;
+    }
+
+    // 3. New Route Loaded: Fit bounds (ONCE per route load)
+    if (route?.bbox && route !== lastRouteId.current) {
+        const [minLon, minLat, maxLon, maxLat] = route.bbox;
+        map.fitBounds([[minLat, minLon], [maxLat, maxLon]], { padding: [50, 50] });
+        lastRouteId.current = route;
+    } 
+    else if (destRoute?.bbox && destRoute !== lastRouteId.current) {
+         const [minLon, minLat, maxLon, maxLat] = destRoute.bbox;
+         map.fitBounds([[minLat, minLon], [maxLat, maxLon]], { padding: [50, 50] });
+         lastRouteId.current = destRoute;
+    }
+
+  }, [me, route, destRoute, selectedUserId, map]); 
+
   return null;
 }
 
+// Click Handler for setting Destination
 const MapClickHandler = ({ onSetDestination }) => {
   useMapEvents({
     click(e) {
-      if (window.confirm("Set this location as the Meeting Point?")) {
-        onSetDestination({ lat: e.latlng.lat, lng: e.latlng.lng });
-      }
+        // Standard Leaflet Map Click
+        if (window.confirm("Set this location as the Meeting Point?")) {
+            onSetDestination({ lat: e.latlng.lat, lng: e.latlng.lng });
+        }
     },
   });
   return null;
@@ -109,7 +102,6 @@ const Map = ({
   const usersArray = Array.isArray(users) ? users : Object.values(users || {});
   const me = usersArray.find((u) => u.userId === mySocketId);
 
-  // Extract USER Route Coordinates (Blue)
   let userPolylineCoords = [];
   if (route?.features?.[0]?.geometry?.coordinates) {
     userPolylineCoords = route.features[0].geometry.coordinates
@@ -117,7 +109,6 @@ const Map = ({
         .map(([lng, lat]) => [lat, lng]);
   }
 
-  // Extract DESTINATION Route Coordinates (Red)
   let destPolylineCoords = [];
   if (destRoute?.features?.[0]?.geometry?.coordinates) {
     destPolylineCoords = destRoute.features[0].geometry.coordinates
@@ -146,16 +137,47 @@ const Map = ({
     setSearchQuery("");
   };
 
+  // RECENTER BUTTON (FIXED with L.DomEvent.disableClickPropagation)
   const RecenterMap = () => {
     const map = useMap();
-    const handleRecenter = () => {
-        if(me && isValidCoord(me.lat, me.lng)) map.setView([me.lat, me.lng], 18);
+    const btnRef = useRef(null);
+
+    // This useEffect is the Magic Fix.
+    // It tells Leaflet specifically: "Ignore clicks on this element"
+    useEffect(() => {
+        if (btnRef.current) {
+            L.DomEvent.disableClickPropagation(btnRef.current);
+            L.DomEvent.disableScrollPropagation(btnRef.current);
+        }
+    }, []);
+    
+    const handleRecenter = (e) => {
+        // Prevent default browser behavior
+        e.preventDefault(); 
+        e.stopPropagation();
+
+        // 1. If Route exists, fit the route
+        if (route?.bbox) {
+             const [minLon, minLat, maxLon, maxLat] = route.bbox;
+             map.fitBounds([[minLat, minLon], [maxLat, maxLon]], { padding: [50, 50] });
+        }
+        // 2. If Destination Route exists, fit that
+        else if (destRoute?.bbox) {
+             const [minLon, minLat, maxLon, maxLat] = destRoute.bbox;
+             map.fitBounds([[minLat, minLon], [maxLat, maxLon]], { padding: [50, 50] });
+        }
+        // 3. Otherwise, just find ME
+        else if(me && isValidCoord(me.lat, me.lng)) {
+             map.setView([me.lat, me.lng], 18);
+        }
     };
+
     return (
         <button 
+            ref={btnRef} // Attach the ref here
             onClick={handleRecenter}
-            className="absolute bottom-24 right-4 z-[1000] bg-white p-3 rounded-full shadow-xl border border-gray-300 hover:bg-gray-100"
-            title="Recenter on me"
+            className="absolute top-20 right-4 z-[1000] bg-white p-3 rounded-full shadow-xl border border-gray-300 hover:bg-gray-100 transition-transform transform active:scale-95"
+            title="Recenter Map"
         >
             <FaLocationArrow className="text-blue-600 text-xl" />
         </button>
@@ -164,7 +186,7 @@ const Map = ({
 
   return (
     <div className="relative w-full h-full">
-      {/* Search Bar */}
+      {/* Search Bar (Outside MapContainer - No propagation issues) */}
       <div className="absolute top-4 left-1/2 transform -translate-x-1/2 z-[1000] w-11/12 max-w-md">
         <form onSubmit={handleSearch} className="flex shadow-xl">
             <input 
@@ -198,6 +220,7 @@ const Map = ({
         )}
       </div>
 
+      {/* Theme Selector */}
       <div className="absolute bottom-8 left-4 z-[1000] bg-white rounded-lg shadow-lg p-2 border border-gray-200">
         <select
           value={theme}
@@ -220,7 +243,13 @@ const Map = ({
       >
         <ZoomControl position="bottomright" />
         
-        <FitBounds me={me} selectedUser={selectedUser} destination={destination} route={route} destRoute={destRoute} />
+        <MapController 
+            me={me} 
+            route={route} 
+            destRoute={destRoute} 
+            selectedUserId={selectedUserId} 
+        />
+        
         <MapClickHandler onSetDestination={onSetDestination} />
         <RecenterMap /> 
         
@@ -265,21 +294,15 @@ const Map = ({
             );
           })}
 
-        {/* --- 1. USER ROUTE (BLUE) --- */}
+        {/* USER ROUTE (BLUE) */}
         {userPolylineCoords.length > 0 && (
           <>
              <Polyline positions={userPolylineCoords} color="#1e3a8a" weight={8} opacity={0.6} />
              <Polyline positions={userPolylineCoords} color="#3b82f6" weight={5} opacity={1} />
           </>
         )}
-        {/* Fallback Straight Line */}
-        {userPolylineCoords.length === 0 && me && selectedUser && 
-         isValidCoord(me.lat, me.lng) && isValidCoord(selectedUser.lat, selectedUser.lng) && (
-          <Polyline positions={[[me.lat, me.lng], [selectedUser.lat, selectedUser.lng]]} color="gray" weight={4} dashArray="10,10" opacity={0.5} />
-        )}
-
-
-        {/* --- 2. DESTINATION ROUTE (RED) --- */}
+        
+        {/* DESTINATION ROUTE (RED) */}
         {destPolylineCoords.length > 0 && (
           <>
              <Polyline positions={destPolylineCoords} color="#7f1d1d" weight={8} opacity={0.6} />
@@ -297,7 +320,6 @@ const Map = ({
                     iconAnchor: [12, 41]
                 })}
             >
-                {/* POPUP WITH STATS */}
                 <Popup minWidth={150}>
                     <div className="text-center">
                         <b className="text-red-600 text-lg">Meeting Point</b>
@@ -312,12 +334,6 @@ const Map = ({
                     </div>
                 </Popup>
             </Marker>
-        )}
-        
-        {/* Fallback Straight Line to Destination */}
-        {me && destination && destPolylineCoords.length === 0 &&
-         isValidCoord(me.lat, me.lng) && isValidCoord(destination.lat, destination.lng) && (
-             <Polyline positions={[[me.lat, me.lng], [destination.lat, destination.lng]]} color="red" dashArray="10,10" />
         )}
       </MapContainer>
     </div>
