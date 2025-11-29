@@ -1,68 +1,98 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import axios from 'axios';
-import Map from '../components/Map'
+import Map from '../components/Map';
 import Sidebar from '../components/Sidebar';
-import socket, { listenforUsersUpdates, emitLocationUpdate, joinRoom } from '../socket.js'
+import socket, { 
+    listenforUsersUpdates, 
+    emitLocationUpdate, 
+    joinRoom, 
+    setMeetingPoint, 
+    listenForDestination 
+} from '../socket.js';
+
+import ChatWindow from '../components/ChatWindow'; 
+import { BsChatDotsFill } from 'react-icons/bs'; 
 
 const getRoomIdfromURL = () => {
     const match = window.location.pathname.match(/\/room\/([a-zA-Z0-9_-]+)/);
-    //Gives the path part of the current page’s URL (without domain and query params).     
-    // https://example.com/room/abcd1234     
-    // then window.location.pathname will give // "/room/abcd1234"      
     return match ? match[1] : null;
-      // "/room/abcd1234".match(/\/room\/([a-zA-Z0-9_-]+)/); -> it will give ["/room/abcd1234", "abcd1234"] this as answer , and we will take the match[1] i.e 2nd element from here   
 };
 
 const RoomPage = ({ userName, travelMode }) => {
-    const [users, setusers] = useState({}); // default as empty object
+    const [users, setusers] = useState({});
     const [selectedUser, setSelectedUser] = useState(null);
     const [roomId, setRoomId] = useState(getRoomIdfromURL() || "");
     const [copied, setCopied] = useState(false);
     const [windowWidth, setWindowWidth] = useState(window.innerWidth);
     const [isSidebarOpen, setIsSidebarOpen] = useState(window.innerWidth >= 768);
-    const [route, setRoute] = useState(null);
+    
+    // Route States
+    const [route, setRoute] = useState(null); // Route to Selected User
+    const [destRoute, setDestRoute] = useState(null); // Route to Meeting Point
+    const [destStats, setDestStats] = useState(null); // Distance/Time to Meeting Point
+    
     const [loadingRoute, setLoadingRoute] = useState(false);
     const [myLocation, setMyLocation] = useState(null);
 
-    // This useEffect handles the core logic for joining the room and tracking location
+    const [destination, setDestination] = useState(null);
+    const [isChatOpen, setIsChatOpen] = useState(false);
+
+    const lastLocationUpdate = useRef(0);
+
     useEffect(() => {
-        // Adding the user to the room
         const currentRoomId = getRoomIdfromURL();
         if (!currentRoomId) return;
         setRoomId(currentRoomId);
-        joinRoom(currentRoomId, userName, travelMode); // socket.js se milega , vaha pr create kiya hai ye
 
-        // Location
-        if (!navigator.geolocation) { // location not supported ->send alert
+        joinRoom(currentRoomId, userName, travelMode);
+
+        const handleReconnect = () => {
+            console.log("Reconnected! Re-joining room...");
+            joinRoom(currentRoomId, userName, travelMode);
+        };
+        socket.on("connect", handleReconnect);
+
+        listenForDestination(setDestination);
+        listenforUsersUpdates((data) => {
+            setusers(data);
+        });
+
+        if (!navigator.geolocation) {
             alert('Geolocation is not supported by your browser');
             return;
         }
 
-        const handleLocation = (position) => { // send the lat and lng to the sockethandler to calculate the distance,eta and the route
+        const handleLocation = (position) => {
             const { latitude, longitude } = position.coords;
-            setMyLocation({ lat: latitude, lng: longitude }); // store my location locally
-            emitLocationUpdate({ lat: latitude, lng: longitude, name: userName, mode: travelMode }); // socket.js mai create kiya hai , emitLocationUpdate se hum location bhej denge , aur socketHandler.js usko get kar lega
+            setMyLocation({ lat: latitude, lng: longitude });
+
+            const now = Date.now();
+            if (now - lastLocationUpdate.current > 2000) {
+                emitLocationUpdate({ lat: latitude, lng: longitude, name: userName, mode: travelMode });
+                lastLocationUpdate.current = now;
+            }
         };
 
-        const handleError = (error) => { // permission denied then , we cannot use the website
-            alert('Location Permission Denied. Please allow location Access!');
+        const handleError = (error) => {
+            console.error("Location error:", error);
         };
 
-        const watchId = navigator.geolocation.watchPosition(handleLocation, handleError, { // getcurrentposition
+        const watchId = navigator.geolocation.watchPosition(handleLocation, handleError, {
             enableHighAccuracy: true,
-            maximumAge: 0, // not storing any cache
-            timeout: 6000, // maximum time (in ms) the browser will wait to get a location fix before throwing an error.
+            maximumAge: 0,
+            timeout: 10000,
         });
-
-        listenforUsersUpdates(setusers);
 
         return () => {
             socket.off('user-offline');
+            socket.off('destinationUpdate');
+            socket.off('locationUpdate');
+            socket.off('connect', handleReconnect);
             navigator.geolocation.clearWatch(watchId);
         };
     }, [userName, travelMode]);
 
-    // This useEffect handles fetching the route when a user is selected
+    // 1. Fetch Route to SELECTED USER
     useEffect(() => {
         const fetchRoute = async () => {
             if (!selectedUser) {
@@ -74,15 +104,19 @@ const RoomPage = ({ userName, travelMode }) => {
             if (!me) return;
             setLoadingRoute(true);
             try {
-                const API_BASE = process.env.VITE_SERVER_URL || "http://localhost:4000";
+                // FIXED: Changed process.env to import.meta.env
+                const API_BASE = import.meta.env.VITE_SERVER_URL || "http://localhost:4000";
                 const res = await axios.post(`${API_BASE}/api/locations/route`, {
                     start: { lat: me.lat, lng: me.lng },
                     end: { lat: selectedUser.lat, lng: selectedUser.lng },
                     mode: travelMode,
                 });
-                setRoute(res.data);
+                
+                if (res.data && res.data.route) {
+                    setRoute(res.data.route);
+                }
             } catch (err) {
-                console.error("Route fetch error:", err.response?.data || err.message);
+                console.error("Route error:", err);
                 setRoute(null);
             }
             setLoadingRoute(false);
@@ -90,13 +124,58 @@ const RoomPage = ({ userName, travelMode }) => {
         fetchRoute();
     }, [selectedUser, users, travelMode]);
 
-    //  remove duplicate usersWithMe definition (keep only this object merge)
+    // 2. Fetch Route to DESTINATION (Meeting Point)
+    useEffect(() => {
+        const fetchDestRoute = async () => {
+            // Need both My Location and Destination
+            const me = users[socket.id];
+            if (!destination || !me || !me.lat) {
+                setDestRoute(null);
+                setDestStats(null);
+                return;
+            }
+
+            try {
+                // FIXED: Changed process.env to import.meta.env
+                const API_BASE = import.meta.env.VITE_SERVER_URL || "http://localhost:4000";
+                const res = await axios.post(`${API_BASE}/api/locations/route`, {
+                    start: { lat: me.lat, lng: me.lng },
+                    end: { lat: destination.lat, lng: destination.lng },
+                    mode: travelMode,
+                });
+
+                if (res.data && res.data.route) {
+                    setDestRoute(res.data.route);
+                    
+                    const feature = res.data.route.features?.[0];
+                    if (feature?.properties?.summary) {
+                        const { distance, duration } = feature.properties.summary;
+                        setDestStats({
+                            dist: (distance / 1000).toFixed(1) + " km", 
+                            time: Math.round(duration / 60) + " min"
+                        });
+                    } else if (feature?.properties?.segments?.[0]) {
+                        const { distance, duration } = feature.properties.segments[0];
+                        setDestStats({
+                            dist: (distance / 1000).toFixed(1) + " km",
+                            time: Math.round(duration / 60) + " min"
+                        });
+                    }
+                }
+            } catch (err) {
+                console.error("Destination Route error:", err);
+                setDestRoute(null);
+                setDestStats(null);
+            }
+        };
+        fetchDestRoute();
+    }, [destination, users, travelMode]);
+
     const usersWithMe = {
         ...users,
         ...(myLocation ? { [socket.id]: { lat: myLocation.lat, lng: myLocation.lng, userId: socket.id, name: userName || "Me" } } : {})
     };
 
-    // Creates a shareable room link
     const roomUrl = `${window.location.origin}/room/${encodeURIComponent(roomId)}`;
 
     return (
@@ -105,12 +184,10 @@ const RoomPage = ({ userName, travelMode }) => {
             <div className="sticky top-0 z-30 bg-blue-500 p-2 text-white shadow-lg">
                 <div className="flex flex-col md:flex-row items-center justify-between ">
                     <div className="flex items-center w-full md:w-auto">
-                        {/* For mobile view Side Bar */}
                         {windowWidth < 768 && !isSidebarOpen && (
                             <button
                                 className="md:hidden mr-3 bg-white/10 hover:bg-white/20 p-2 rounded-full border border-white/20 transition"
                                 onClick={() => setIsSidebarOpen(true)}
-                                aria-label="Open sidebar"
                             >
                                 <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
@@ -126,22 +203,17 @@ const RoomPage = ({ userName, travelMode }) => {
                             <input
                                 type="text"
                                 value={roomUrl}
-                                readOnly // we can not edit this
+                                readOnly
                                 className="flex-1 border-none px-3 py-2 rounded-l-md text-sm text-gray-700 border-green-500 border-2 bg-white focus:outline-none"
-                                onFocus={e => e.target.select()} // Jab input pe click/focus hoga, pura text auto select ho jaayega.
+                                onFocus={e => e.target.select()} 
                             />
-                            {/* Copy Room Link */}
                             <button
                                 onClick={() => {
-                                    // 1. Copy text to clipboard
                                     navigator.clipboard.writeText(roomUrl);
-                                    // 2. State update → show "Copied!" instead of "Copy"
                                     setCopied(true);
-                                    // 3. After 1.5 sec, reset back to "Copy"
                                     setTimeout(() => setCopied(false), 1500);
                                 }}
                                 className="bg-green-500 hover:bg-green-600  text-white px-3 py-2 rounded-r-md text-sm font-medium transition "
-                                id="copyBtn"
                             >
                                 {copied ? "Copied!" : "Copy"}
                             </button>
@@ -153,8 +225,6 @@ const RoomPage = ({ userName, travelMode }) => {
             {/* Main Content */}
             <div className="relative flex flex-1 overflow-hidden">
                 {isSidebarOpen && (
-                    // Sidebar mai jo jo chize display krwani ho vo daaldo ,
-                    // Sidebar component kahi aur bana rkha hai ,idhr isme daalo aur jo props chahiye vo bhej do
                     <Sidebar
                         travelMode={travelMode}
                         username={userName || "Me"}
@@ -174,12 +244,36 @@ const RoomPage = ({ userName, travelMode }) => {
                             <div className="animate-spin rounded-full h-16 w-16 border-t-4 border-blue-500 border-solid"></div>
                         </div>
                     )}
+                    
                     <Map
                         users={usersWithMe}
                         mySocketId={socket.id}
-                        route={route}
+                        
+                        // Pass Selected User Route
+                        route={route} 
+                        
+                        // Pass Destination Route & Stats
+                        destRoute={destRoute}
+                        destStats={destStats}
+                        
                         selectedUser={selectedUser}
                         selectedUserId={selectedUser?.userId}
+                        onSetDestination={setMeetingPoint}
+                        destination={destination}
+                    />
+
+                    <button 
+                        onClick={() => setIsChatOpen(!isChatOpen)}
+                        className="fixed bottom-6 right-6 z-[1002] bg-blue-600 text-white p-4 rounded-full shadow-lg hover:bg-blue-700 transition flex items-center justify-center hover:scale-105"
+                    >
+                        <BsChatDotsFill className="text-xl" />
+                    </button>
+
+                    <ChatWindow 
+                        roomId={roomId}
+                        userName={userName}
+                        isOpen={isChatOpen}
+                        onClose={() => setIsChatOpen(false)}
                     />
                 </div>
             </div>
