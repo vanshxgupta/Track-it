@@ -12,6 +12,11 @@ body {
     transition: transform 5s linear !important;
 }
 
+/* Compass arrow ko smooth ghumane ke liye */
+.compass-arrow {
+    transition: transform 0.5s ease-out !important;
+}
+
 /* Jab zoom ho raha ho, tab transition band (No Flying) */
 .zooming .smooth-marker {
     transition: none !important;

@@ -20,7 +20,7 @@ const isValidCoord = (lat, lng) => {
     return typeof lat === 'number' && typeof lng === 'number' && !isNaN(lat) && !isNaN(lng);
 };
 
-// 2. MapController: Handls camera movements (Initial, New User, or Manual Recenter)
+// 2. MapController: Handles camera movements (Initial, New User, or Manual Recenter)
 function MapController({ me, route, destRoute, selectedUserId, forceRecenter, setForceRecenter }) {
   const map = useMap();
   const isInitialized = useRef(false);
@@ -98,6 +98,7 @@ const Map = ({
       movestart: () => setIsMapActive(true),
       moveend: () => setIsMapActive(false),
       click: (e) => {
+        // Prevent accidental meeting point selection if clicking on UI
         if (window.confirm("Set this location as the Meeting Point?")) {
             onSetDestination({ lat: e.latlng.lat, lng: e.latlng.lng });
         }
@@ -232,6 +233,7 @@ const Map = ({
                     <Marker 
                         position={[user.lat, user.lng]}
                         icon={new L.DivIcon({
+                            // This class links to the CSS file for 5s glide
                             className: 'smooth-marker',
                             html: `
                                 <div style="position: relative;">
@@ -247,6 +249,7 @@ const Map = ({
                                         transform: rotate(${user.heading || 0}deg);
                                         transform-origin: center 20px;
                                         filter: drop-shadow(0 2px 2px rgba(0,0,0,0.3));
+                                        transition: transform 0.5s ease-out; /* FIXES COMPASS FLICKER */
                                     "></div>
                                 </div>
                             `,

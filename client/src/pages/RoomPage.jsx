@@ -42,6 +42,8 @@ const RoomPage = ({ userName, travelMode }) => {
     const lastLocationUpdate = useRef(0);
     const isInitialRouteFetch = useRef(true);
 
+    const lastHeading = useRef(0);
+
     useEffect(() => {
         const currentRoomId = getRoomIdfromURL();
         if (!currentRoomId) return;
@@ -52,10 +54,17 @@ const RoomPage = ({ userName, travelMode }) => {
 
         // 2. Handle Orientation (Compass)
         const handleOrientation = (e) => {
-            // Support for both iOS and Android compass data
-            const compass = e.webkitCompassHeading || (360 - e.alpha);
-            if (compass) {
-                setHeading(Math.round(compass));
+            const rawCompass = e.webkitCompassHeading || (360 - e.alpha);
+            
+            if (rawCompass) {
+                const roundedCompass = Math.round(rawCompass);
+                
+                // "Smoothing" logic: Agar change 5 degree se kam hai, toh ignore karo
+                // Isse flicker khatam ho jayega
+                if (Math.abs(roundedCompass - lastHeading.current) > 5) {
+                    setHeading(roundedCompass);
+                    lastHeading.current = roundedCompass;
+                }
             }
         };
 
