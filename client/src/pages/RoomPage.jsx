@@ -33,30 +33,51 @@ const RoomPage = ({ userName, travelMode }) => {
     
     const [loadingRoute, setLoadingRoute] = useState(false);
     const [myLocation, setMyLocation] = useState(null);
+    const [heading, setHeading] = useState(0); // Direction user is pointing
 
     const [destination, setDestination] = useState(null);
     const [isChatOpen, setIsChatOpen] = useState(false);
 
+    // Refs for optimization
     const lastLocationUpdate = useRef(0);
+    const isInitialRouteFetch = useRef(true);
 
     useEffect(() => {
         const currentRoomId = getRoomIdfromURL();
         if (!currentRoomId) return;
         setRoomId(currentRoomId);
 
+        // 1. Initial Room Join
         joinRoom(currentRoomId, userName, travelMode);
 
+        // 2. Handle Orientation (Compass)
+        const handleOrientation = (e) => {
+            // Support for both iOS and Android compass data
+            const compass = e.webkitCompassHeading || (360 - e.alpha);
+            if (compass) {
+                setHeading(Math.round(compass));
+            }
+        };
+
+        // iOS 13+ requires permission for orientation, but standard browsers use window listener
+        if (window.DeviceOrientationEvent) {
+            window.addEventListener('deviceorientation', handleOrientation);
+        }
+
+        // 3. Socket Reconnection logic
         const handleReconnect = () => {
             console.log("Reconnected! Re-joining room...");
             joinRoom(currentRoomId, userName, travelMode);
         };
         socket.on("connect", handleReconnect);
 
+        // 4. Data Listeners
         listenForDestination(setDestination);
         listenforUsersUpdates((data) => {
             setusers(data);
         });
 
+        // 5. Geolocation Watcher
         if (!navigator.geolocation) {
             alert('Geolocation is not supported by your browser');
             return;
@@ -67,8 +88,15 @@ const RoomPage = ({ userName, travelMode }) => {
             setMyLocation({ lat: latitude, lng: longitude });
 
             const now = Date.now();
-            if (now - lastLocationUpdate.current > 2000) {
-                emitLocationUpdate({ lat: latitude, lng: longitude, name: userName, mode: travelMode });
+            // Emit update every 5 seconds for smooth background tracking
+            if (now - lastLocationUpdate.current > 5000) {
+                emitLocationUpdate({ 
+                    lat: latitude, 
+                    lng: longitude, 
+                    name: userName, 
+                    mode: travelMode,
+                    heading: heading // Include compass heading
+                });
                 lastLocationUpdate.current = now;
             }
         };
@@ -88,11 +116,17 @@ const RoomPage = ({ userName, travelMode }) => {
             socket.off('destinationUpdate');
             socket.off('locationUpdate');
             socket.off('connect', handleReconnect);
+            window.removeEventListener('deviceorientation', handleOrientation);
             navigator.geolocation.clearWatch(watchId);
         };
-    }, [userName, travelMode]);
+    }, [userName, travelMode, heading]);
 
-    // 1. Fetch Route to SELECTED USER
+    // Reset loader flag when user selection changes
+    useEffect(() => {
+        isInitialRouteFetch.current = true;
+    }, [selectedUser?.userId]);
+
+    // 1. Fetch Route to SELECTED USER (Silent Updates)
     useEffect(() => {
         const fetchRoute = async () => {
             if (!selectedUser) {
@@ -101,10 +135,14 @@ const RoomPage = ({ userName, travelMode }) => {
                 return;
             }
             const me = users[socket.id];
-            if (!me) return;
-            setLoadingRoute(true);
+            if (!me || !me.lat) return;
+
+            // Only show loader on the first fetch of this selection
+            if (isInitialRouteFetch.current) {
+                setLoadingRoute(true);
+            }
+
             try {
-                // FIXED: Changed process.env to import.meta.env
                 const API_BASE = import.meta.env.VITE_SERVER_URL || "http://localhost:4000";
                 const res = await axios.post(`${API_BASE}/api/locations/route`, {
                     start: { lat: me.lat, lng: me.lng },
@@ -117,9 +155,10 @@ const RoomPage = ({ userName, travelMode }) => {
                 }
             } catch (err) {
                 console.error("Route error:", err);
-                setRoute(null);
+            } finally {
+                setLoadingRoute(false);
+                isInitialRouteFetch.current = false; // Disable loader for background updates
             }
-            setLoadingRoute(false);
         };
         fetchRoute();
     }, [selectedUser, users, travelMode]);
@@ -127,7 +166,6 @@ const RoomPage = ({ userName, travelMode }) => {
     // 2. Fetch Route to DESTINATION (Meeting Point)
     useEffect(() => {
         const fetchDestRoute = async () => {
-            // Need both My Location and Destination
             const me = users[socket.id];
             if (!destination || !me || !me.lat) {
                 setDestRoute(null);
@@ -136,7 +174,6 @@ const RoomPage = ({ userName, travelMode }) => {
             }
 
             try {
-                // FIXED: Changed process.env to import.meta.env
                 const API_BASE = import.meta.env.VITE_SERVER_URL || "http://localhost:4000";
                 const res = await axios.post(`${API_BASE}/api/locations/route`, {
                     start: { lat: me.lat, lng: me.lng },
@@ -154,12 +191,6 @@ const RoomPage = ({ userName, travelMode }) => {
                             dist: (distance / 1000).toFixed(1) + " km", 
                             time: Math.round(duration / 60) + " min"
                         });
-                    } else if (feature?.properties?.segments?.[0]) {
-                        const { distance, duration } = feature.properties.segments[0];
-                        setDestStats({
-                            dist: (distance / 1000).toFixed(1) + " km",
-                            time: Math.round(duration / 60) + " min"
-                        });
                     }
                 }
             } catch (err) {
@@ -173,7 +204,7 @@ const RoomPage = ({ userName, travelMode }) => {
 
     const usersWithMe = {
         ...users,
-        ...(myLocation ? { [socket.id]: { lat: myLocation.lat, lng: myLocation.lng, userId: socket.id, name: userName || "Me" } } : {})
+        ...(myLocation ? { [socket.id]: { ...users[socket.id], lat: myLocation.lat, lng: myLocation.lng, userId: socket.id, name: userName || "Me", heading } } : {})
     };
 
     const roomUrl = `${window.location.origin}/room/${encodeURIComponent(roomId)}`;
@@ -198,7 +229,7 @@ const RoomPage = ({ userName, travelMode }) => {
                         <span className="ml-2 px-2 py-1 bg-white text-purple-700 rounded-md font-mono text-sm">{roomId}</span>
                     </div>
 
-                    <div className="flex flex-col justify-center self-center sm:flex-row items-center gap-2 mt-2 md:mt-0 w-full md:w-auto">
+                    <div className="flex flex-col justify-center sm:flex-row items-center gap-2 mt-2 md:mt-0 w-full md:w-auto">
                         <div className="flex items-center w-full sm:w-auto max-w-md">
                             <input
                                 type="text"
@@ -239,8 +270,9 @@ const RoomPage = ({ userName, travelMode }) => {
                 )}
 
                 <div className="flex-1 relative z-0 bg-gradient-to-br from-blue-50 to-purple-100">
+                    {/* Only show loader on first fetch */}
                     {loadingRoute && (
-                        <div className="absolute inset-0 z-10 flex items-center justify-center bg-white bg-opacity-70 backdrop-blur-sm">
+                        <div className="absolute inset-0 z-50 flex items-center justify-center bg-white bg-opacity-70 backdrop-blur-sm">
                             <div className="animate-spin rounded-full h-16 w-16 border-t-4 border-blue-500 border-solid"></div>
                         </div>
                     )}
@@ -248,20 +280,16 @@ const RoomPage = ({ userName, travelMode }) => {
                     <Map
                         users={usersWithMe}
                         mySocketId={socket.id}
-                        
-                        // Pass Selected User Route
                         route={route} 
-                        
-                        // Pass Destination Route & Stats
                         destRoute={destRoute}
                         destStats={destStats}
-                        
                         selectedUser={selectedUser}
                         selectedUserId={selectedUser?.userId}
                         onSetDestination={setMeetingPoint}
                         destination={destination}
                     />
 
+                    {/* Chat Trigger */}
                     <button 
                         onClick={() => setIsChatOpen(!isChatOpen)}
                         className="fixed bottom-6 right-6 z-[1002] bg-blue-600 text-white p-4 rounded-full shadow-lg hover:bg-blue-700 transition flex items-center justify-center hover:scale-105"

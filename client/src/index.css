@@ -4,3 +4,26 @@
 body {
   font-family: 'Poppins', sans-serif;
 }
+
+/* smooth animation implement krne ki koshish hai , jisse user ko animation dikhe ke location ,har milli second update hori hai , but vo 5 sec mai update hogi  */
+
+/* Normal state mein 5s glide */
+.smooth-marker {
+    transition: transform 5s linear !important;
+}
+
+/* Jab zoom ho raha ho, tab transition band (No Flying) */
+.zooming .smooth-marker {
+    transition: none !important;
+}
+
+/* Accuracy pulse */
+.my-location-pulse {
+    animation: marker-pulse 2s infinite;
+}
+
+@keyframes marker-pulse {
+    0% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.7); }
+    70% { box-shadow: 0 0 0 15px rgba(59, 130, 246, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0); }
+}
