@@ -20,7 +20,7 @@ const isValidCoord = (lat, lng) => {
     return typeof lat === 'number' && typeof lng === 'number' && !isNaN(lat) && !isNaN(lng);
 };
 
-// 2. MapController: Handles camera movements (Initial, New User, or Manual Recenter)
+// 2. MapController: Handles camera movements (Stabilized)
 function MapController({ me, route, destRoute, selectedUserId, forceRecenter, setForceRecenter }) {
   const map = useMap();
   const isInitialized = useRef(false);
@@ -29,22 +29,22 @@ function MapController({ me, route, destRoute, selectedUserId, forceRecenter, se
   useEffect(() => {
     // Initial Load: Center on me once
     if (me && isValidCoord(me.lat, me.lng) && !isInitialized.current) {
-        map.setView([me.lat, me.lng], 18);
+        map.setView([me.lat, me.lng], 16); // Thoda close zoom (16-18) better hota hai
         isInitialized.current = true;
     }
 
-    // Centering Logic: Triggers on manual button click or when switching users
+    // Centering Logic
     const isNewTarget = selectedUserId !== lastTargetId.current;
 
     if (forceRecenter || isNewTarget) {
         if (route?.bbox) {
             const [minLon, minLat, maxLon, maxLat] = route.bbox;
-            map.fitBounds([[minLat, minLon], [maxLat, maxLon]], { padding: [50, 50] });
+            map.fitBounds([[minLat, minLon], [maxLat, maxLon]], { padding: [50, 50], animate: true });
         } else if (destRoute?.bbox) {
             const [minLon, minLat, maxLon, maxLat] = destRoute.bbox;
-            map.fitBounds([[minLat, minLon], [maxLat, maxLon]], { padding: [50, 50] });
+            map.fitBounds([[minLat, minLon], [maxLat, maxLon]], { padding: [50, 50], animate: true });
         } else if (me && isValidCoord(me.lat, me.lng)) {
-            map.setView([me.lat, me.lng], 18);
+            map.flyTo([me.lat, me.lng], 17, { animate: true, duration: 1.5 });
         }
         
         setForceRecenter(false);
@@ -90,7 +90,7 @@ const Map = ({
     });
   }, []);
 
-  // Events Tracker: Detects when the user interacts with the map
+  // Events Tracker
   const MapEventsTracker = () => {
     useMapEvents({
       zoomstart: () => setIsMapActive(true),
@@ -98,7 +98,6 @@ const Map = ({
       movestart: () => setIsMapActive(true),
       moveend: () => setIsMapActive(false),
       click: (e) => {
-        // Prevent accidental meeting point selection if clicking on UI
         if (window.confirm("Set this location as the Meeting Point?")) {
             onSetDestination({ lat: e.latlng.lat, lng: e.latlng.lng });
         }
@@ -134,15 +133,11 @@ const Map = ({
     setIsSearching(false);
   };
 
-  // Recenter Button Logic with Propagation Fix
+  // Recenter Button Logic
   const RecenterButton = () => {
-    const map = useMap();
     const btnRef = useRef(null);
-
     useEffect(() => {
-        if (btnRef.current) {
-            L.DomEvent.disableClickPropagation(btnRef.current);
-        }
+        if (btnRef.current) L.DomEvent.disableClickPropagation(btnRef.current);
     }, []);
 
     return (
@@ -159,7 +154,7 @@ const Map = ({
   return (
     <div className={`relative w-full h-full overflow-hidden ${isMapActive ? 'zooming' : ''}`}>
       
-      {/* 1. Search Bar Overlay */}
+      {/* 1. Search Bar */}
       <div className="absolute top-4 left-1/2 transform -translate-x-1/2 z-[1001] w-11/12 max-w-md" onClick={e => e.stopPropagation()}>
         <form onSubmit={handleSearch} className="flex shadow-xl">
             <input 
@@ -192,7 +187,7 @@ const Map = ({
       {/* 2. Map Container */}
       <MapContainer
         center={currentLocation || [51.505, -0.09]}
-        zoom={18}
+        zoom={16}
         style={{ height: "100vh", width: "100%" }}
         zoomControl={false} 
         className="z-0"
@@ -217,39 +212,47 @@ const Map = ({
             if (!isValidCoord(user.lat, user.lng)) return null;
             const isMe = user.userId === mySocketId;
 
+            // Shortest Rotation Logic Fix for CSS (prevents 360 spin)
+            // Note: Ideally handled in data, but CSS transition helps mask it
+            const headingStyle = {
+                transform: `rotate(${user.heading || 0}deg)`,
+                transition: isMapActive ? 'none' : 'transform 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+            };
+
             return (
                 <React.Fragment key={user.userId}>
-                    {/* Motion Aura */}
+                    {/* Motion Aura (Pulse) */}
                     <Circle 
                         center={[user.lat, user.lng]} 
-                        radius={15} 
+                        radius={isMe ? 20 : 15} 
                         pathOptions={{ 
                             fillColor: isMe ? '#3b82f6' : '#9ca3af', 
-                            fillOpacity: 0.15, 
-                            color: 'transparent' 
+                            fillOpacity: isMe ? 0.2 : 0.15, 
+                            color: isMe ? '#60a5fa' : 'transparent',
+                            weight: 1,
+                            className: isMe ? 'animate-pulse-slow' : '' // Add this in CSS if needed
                         }} 
                     />
                     
                     <Marker 
                         position={[user.lat, user.lng]}
                         icon={new L.DivIcon({
-                            // This class links to the CSS file for 5s glide
-                            className: 'smooth-marker',
+                            className: 'custom-marker-container',
                             html: `
-                                <div style="position: relative;">
+                                <div style="position: relative; width: 44px; height: 44px;">
                                     <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=${user.name}" 
-                                         style="width: 44px; height: 44px; border-radius: 50%; border: 3px solid white; background: white; box-shadow: 0 4px 10px rgba(0,0,0,0.2);" 
-                                         class="${isMe ? 'my-location-pulse' : ''}"/>
+                                         style="width: 100%; height: 100%; border-radius: 50%; border: 3px solid white; background: white; box-shadow: 0 4px 10px rgba(0,0,0,0.3); z-index: 2; position: relative;" />
                                     
-                                    <div style="
-                                        position: absolute; top: -10px; left: 50%; margin-left: -7px;
-                                        width: 0; height: 0; 
-                                        border-left: 7px solid transparent; border-right: 7px solid transparent;
-                                        border-bottom: 14px solid ${isMe ? '#3b82f6' : '#4b5563'};
-                                        transform: rotate(${user.heading || 0}deg);
-                                        transform-origin: center 20px;
-                                        filter: drop-shadow(0 2px 2px rgba(0,0,0,0.3));
-                                        transition: transform 0.5s ease-out; /* FIXES COMPASS FLICKER */
+                                    <div class="direction-cone" style="
+                                            position: absolute; top: -10px; left: 50%; margin-left: -10px;
+                                            width: 0; height: 0; 
+                                            border-left: 10px solid transparent; border-right: 10px solid transparent;
+                                            border-bottom: 18px solid ${isMe ? '#2563eb' : '#4b5563'};
+                                            transform-origin: center 32px;
+                                            z-index: 1;
+                                            filter: drop-shadow(0 2px 2px rgba(0,0,0,0.2));
+                                            transform: rotate(${user.heading || 0}deg);
+                                            transition: transform 0.3s linear;
                                     "></div>
                                 </div>
                             `,
@@ -308,7 +311,7 @@ const Map = ({
         )}
       </MapContainer>
 
-      {/* 6. Theme Selector Overlay */}
+      {/* 6. Theme Selector */}
       <div className="absolute bottom-8 left-4 z-[1001] bg-white rounded-lg shadow-lg p-2 border border-gray-200" onClick={e => e.stopPropagation()}>
         <select
           value={theme}
