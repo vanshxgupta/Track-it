@@ -9,15 +9,14 @@ import socket, {
     setMeetingPoint, 
     listenForDestination 
 } from '../socket.js';
-// Make sure this path is correct
 import { KalmanFilter } from '../utils/KalmanFilter'; 
 import ChatWindow from '../components/ChatWindow'; 
 import { BsChatDotsFill } from 'react-icons/bs'; 
 
-// Helper: Distance calculation (Meters)
+// Helper: Calculate distance between two coordinates in meters
 const getDistance = (lat1, lon1, lat2, lon2) => {
     if (!lat1 || !lon1 || !lat2 || !lon2) return 999;
-    const R = 6371e3; 
+    const R = 6371e3; // Earth radius in meters
     const dLat = (lat2 - lat1) * Math.PI / 180;
     const dLon = (lon2 - lon1) * Math.PI / 180;
     const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
@@ -33,12 +32,15 @@ const getRoomIdfromURL = () => {
 };
 
 const RoomPage = ({ userName, travelMode }) => {
+    // State Variables
     const [users, setusers] = useState({});
     const [selectedUser, setSelectedUser] = useState(null);
     const [roomId, setRoomId] = useState(getRoomIdfromURL() || "");
     const [copied, setCopied] = useState(false);
     const [windowWidth, setWindowWidth] = useState(window.innerWidth);
     const [isSidebarOpen, setIsSidebarOpen] = useState(window.innerWidth >= 768);
+    
+    // Route & Map States
     const [route, setRoute] = useState(null);
     const [destRoute, setDestRoute] = useState(null);
     const [destStats, setDestStats] = useState(null);
@@ -46,17 +48,18 @@ const RoomPage = ({ userName, travelMode }) => {
     const [myLocation, setMyLocation] = useState(null);
     const [heading, setHeading] = useState(0);
     const [destination, setDestination] = useState(null);
-    const [isChatOpen, setIsChatOpen] = useState(false);
-
-    // --- REFS FOR SMOOTHING & OPTIMIZATION ---
-    // 1. Kalman Filters for Location
-    const latFilter = useRef(new KalmanFilter());
-    const lngFilter = useRef(new KalmanFilter());
     
-    // 2. Compass Smoothing Ref
-    const currentHeadingRef = useRef(0);
+    // Chat & Notification State
+    const [isChatOpen, setIsChatOpen] = useState(false);
+    const [unreadCount, setUnreadCount] = useState(0); 
+    const notificationSound = useRef(new Audio('/notification.mp3'));
 
-    // 3. Rate Limiting Refs
+    // Refs for Optimization & Smoothing
+    const latFilter = useRef(new KalmanFilter()); // Filters raw GPS latitude
+    const lngFilter = useRef(new KalmanFilter()); // Filters raw GPS longitude
+    const currentHeadingRef = useRef(0); // Stores current smooth heading
+    
+    // Refs for Rate Limiting API calls
     const lastLocationSent = useRef({ lat: 0, lng: 0 });
     const lastLocationUpdate = useRef(0);
     const lastRouteFetchTime = useRef(0);
@@ -69,26 +72,39 @@ const RoomPage = ({ userName, travelMode }) => {
         setRoomId(currentRoomId);
         joinRoom(currentRoomId, userName, travelMode);
 
-        // --- NEW COMPASS LOGIC (NO FLICKER) ---
+        // --- Notification Listener ---
+        // Listens for messages to play sound and update badge if chat is closed
+        const handleNotification = (data) => {
+            if (!isChatOpen && data.author !== userName) {
+                setUnreadCount(prev => prev + 1);
+                
+                try {
+                    notificationSound.current.currentTime = 0;
+                    notificationSound.current.play().catch(() => {}); // Catch play restrictions
+                } catch (e) {
+                    console.error("Audio Play Error:", e);
+                }
+            }
+        };
+        socket.on("receiveMessage", handleNotification);
+
+        // --- Compass & Heading Logic ---
         const handleOrientation = (e) => {
             let rawHeading = e.webkitCompassHeading || (360 - e.alpha);
             if (rawHeading === null || rawHeading === undefined) return;
 
-            // Shortest Path Logic: 
-            // Calculate difference between current and new angle
+            // Shortest Path Interpolation: Fixes 360->0 degree jump flicker
             let current = currentHeadingRef.current;
             let delta = rawHeading - (current % 360);
-
-            // Fix the 360 -> 0 jump (e.g., 350 to 10 degrees)
-            if (delta > 180) delta -= 360;
-            if (delta < -180) delta += 360;
-
-            // Apply Smoothing (Take 15% of new value, keep 85% of old)
+            if (delta > 180) delta -= 360; // Turn left
+            if (delta < -180) delta += 360; // Turn right
+            
+            // Apply Smoothing factor (Low-pass filter)
             const smoothingFactor = 0.15; 
             const smoothedHeading = current + (delta * smoothingFactor);
             
             currentHeadingRef.current = smoothedHeading;
-            setHeading(smoothedHeading); // Update state for UI
+            setHeading(smoothedHeading);
         };
 
         if (window.DeviceOrientationEvent) {
@@ -98,49 +114,41 @@ const RoomPage = ({ userName, travelMode }) => {
         listenForDestination(setDestination);
         listenforUsersUpdates(setusers);
 
+        // --- Location Tracking Logic ---
         const handleLocation = (position) => {
             const { latitude, longitude } = position.coords;
             
-            // 1. Kalman Filter Apply karo
+            // 1. Apply Kalman Filter to reduce GPS noise
             const fLat = latFilter.current.filter(latitude);
             const fLng = lngFilter.current.filter(longitude);
             setMyLocation({ lat: fLat, lng: fLng });
 
             const now = Date.now();
-            // Pichli bheji gayi location se distance check karo
             const lastLat = lastLocationSent.current.lat;
             const lastLng = lastLocationSent.current.lng;
             const distMoved = getDistance(fLat, fLng, lastLat, lastLng);
 
-            // 🚀 NEW: Agar 5 meter se zyada chale, toh GPS se direction nikalo (Stable Rotation)
+            // 2. Hybrid Heading: If moving > 5m, use GPS bearing instead of Compass
+            // This is more stable when driving or walking
             if (distMoved > 5 && lastLat !== 0) {
-                // Convert Degrees to Radians for Math functions
                 const toRad = (deg) => deg * Math.PI / 180;
                 const toDeg = (rad) => rad * 180 / Math.PI;
-
                 const dLon = toRad(fLng - lastLng);
                 const lat1 = toRad(lastLat);
                 const lat2 = toRad(fLat);
-
                 const y = Math.sin(dLon) * Math.cos(lat2);
-                const x = Math.cos(lat1) * Math.sin(lat2) -
-                          Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLon);
-                
+                const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLon);
                 const brng = (toDeg(Math.atan2(y, x)) + 360) % 360;
-
-                // Compass Ref aur State dono ko update kar do
+                
                 currentHeadingRef.current = brng;
                 setHeading(brng); 
             }
 
-            // 2. Rate Limit: Update only if moved > 15m OR 10s passed
+            // 3. Rate Limiting: Only emit location if moved > 15m OR 10s passed
+            // This prevents flooding the server and saves battery
             if (distMoved > 15 || (now - lastLocationUpdate.current > 10000)) {
                 emitLocationUpdate({ 
-                    lat: fLat, 
-                    lng: fLng, 
-                    name: userName, 
-                    mode: travelMode, 
-                    // Agar chal rahe hain toh GPS bearing jayegi, khade hain toh Compass wali
+                    lat: fLat, lng: fLng, name: userName, mode: travelMode, 
                     heading: currentHeadingRef.current 
                 });
                 lastLocationUpdate.current = now;
@@ -149,18 +157,23 @@ const RoomPage = ({ userName, travelMode }) => {
         };
 
         const watchId = navigator.geolocation.watchPosition(handleLocation, (err) => console.error(err), {
-            enableHighAccuracy: true,
-            maximumAge: 0,
-            timeout: 10000,
+            enableHighAccuracy: true, maximumAge: 0, timeout: 10000,
         });
 
         return () => {
+            socket.off("receiveMessage", handleNotification);
             window.removeEventListener('deviceorientation', handleOrientation);
             navigator.geolocation.clearWatch(watchId);
         };
-    }, [userName, travelMode]); // Removed 'heading' from dependency to avoid re-running effect on every rotation
+    }, [userName, travelMode, isChatOpen]);
 
-    // --- ROUTE FETCHING LOGIC (With Loop Fix) ---
+    // Handle Chat Toggle
+    const toggleChat = () => {
+        setIsChatOpen(!isChatOpen);
+        if (!isChatOpen) setUnreadCount(0); // Clear badge when opening
+    };
+
+    // --- Route Fetching Logic (User to User) ---
     useEffect(() => {
         const fetchRoute = async () => {
             const me = users[socket.id];
@@ -168,19 +181,17 @@ const RoomPage = ({ userName, travelMode }) => {
                 if (!selectedUser) setRoute(null);
                 return;
             }
-
             const now = Date.now();
-            // 🛑 Safety: 15s Throttle
+            
+            // Rate Limit: 15s throttle
             if (now - lastRouteFetchTime.current < 15000 && route) return;
-
-            // 🛑 Safety: 40m Movement Threshold
+            
+            // Movement Threshold: Only fetch if moved significantly (40m)
             const distMe = getDistance(me.lat, me.lng, lastFetchedCoords.current.start.lat, lastFetchedCoords.current.start.lng);
             const distTarget = getDistance(selectedUser.lat, selectedUser.lng, lastFetchedCoords.current.end.lat, lastFetchedCoords.current.end.lng);
-
             if (distMe < 40 && distTarget < 40 && route) return;
 
             if (isInitialRouteFetch.current) setLoadingRoute(true);
-
             try {
                 lastRouteFetchTime.current = now;
                 const API_BASE = import.meta.env.VITE_SERVER_URL || "http://localhost:4000";
@@ -189,32 +200,22 @@ const RoomPage = ({ userName, travelMode }) => {
                     end: { lat: selectedUser.lat, lng: selectedUser.lng },
                     mode: travelMode,
                 });
-                
                 if (res.data?.route) {
                     setRoute(res.data.route);
-                    lastFetchedCoords.current = { 
-                        start: { lat: me.lat, lng: me.lng }, 
-                        end: { lat: selectedUser.lat, lng: selectedUser.lng } 
-                    };
+                    lastFetchedCoords.current = { start: { lat: me.lat, lng: me.lng }, end: { lat: selectedUser.lat, lng: selectedUser.lng } };
                 }
-            } catch (err) { 
-                console.error("Route fetch failed:", err); 
-            } finally {
-                setLoadingRoute(false);
-                isInitialRouteFetch.current = false;
-            }
+            } catch (err) { console.error("Route fetch failed:", err); } 
+            finally { setLoadingRoute(false); isInitialRouteFetch.current = false; }
         };
-
         const timer = setTimeout(fetchRoute, 2000);
         return () => clearTimeout(timer);
     }, [selectedUser, users, travelMode]);
 
-    // --- DESTINATION ROUTE LOGIC ---
+    // --- Destination Route Logic ---
     useEffect(() => {
         const fetchDestRoute = async () => {
             const me = users[socket.id];
             if (!destination || !me || typeof me.lat !== 'number') return;
-
             try {
                 const API_BASE = import.meta.env.VITE_SERVER_URL || "http://localhost:4000";
                 const res = await axios.post(`${API_BASE}/api/locations/route`, {
@@ -222,7 +223,6 @@ const RoomPage = ({ userName, travelMode }) => {
                     end: { lat: destination.lat, lng: destination.lng },
                     mode: travelMode,
                 });
-
                 if (res.data?.route) {
                     setDestRoute(res.data.route);
                     const feature = res.data.route.features?.[0];
@@ -239,19 +239,10 @@ const RoomPage = ({ userName, travelMode }) => {
         fetchDestRoute();
     }, [destination, users, travelMode]);
 
-    // Construct users object for Map
+    // Build user object for Map
     const usersWithMe = {
         ...users,
-        ...(myLocation ? { 
-            [socket.id]: { 
-                ...users[socket.id], 
-                lat: myLocation.lat, 
-                lng: myLocation.lng, 
-                userId: socket.id, 
-                name: userName || "Me", 
-                heading: heading // Using smoothed heading state
-            } 
-        } : {})
+        ...(myLocation ? { [socket.id]: { ...users[socket.id], lat: myLocation.lat, lng: myLocation.lng, userId: socket.id, name: userName || "Me", heading: heading } } : {})
     };
 
     const roomUrl = `${window.location.origin}/room/${encodeURIComponent(roomId)}`;
@@ -277,7 +268,7 @@ const RoomPage = ({ userName, travelMode }) => {
                         <div className="flex items-center w-full sm:w-auto max-w-md">
                             <input type="text" value={roomUrl} readOnly className="flex-1 border-none px-3 py-2 rounded-l-md text-sm text-gray-700 border-green-500 border-2 bg-white focus:outline-none" onFocus={e => e.target.select()} />
                             <button onClick={() => { navigator.clipboard.writeText(roomUrl); setCopied(true); setTimeout(() => setCopied(false), 1500); }}
-                                className="bg-green-500 hover:bg-green-600  text-white px-3 py-2 rounded-r-md text-sm font-medium transition ">
+                                className="bg-green-500 hover:bg-green-600 px-3 py-2 rounded-r-md text-sm font-medium transition ">
                                 {copied ? "Copied!" : "Copy"}
                             </button>
                         </div>
@@ -302,7 +293,7 @@ const RoomPage = ({ userName, travelMode }) => {
 
                 <div className="flex-1 relative z-0 bg-gradient-to-br from-blue-50 to-purple-100">
                     
-                    {/* ETA BANNER */}
+                    {/* ETA Banner */}
                     {destStats && destination && (
                         <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[1001] w-[90%] md:w-auto">
                             <div className="bg-white/95 backdrop-blur-md border border-blue-100 shadow-2xl rounded-2xl px-8 py-4 flex items-center gap-8">
@@ -336,8 +327,18 @@ const RoomPage = ({ userName, travelMode }) => {
                         destination={destination}
                     />
 
-                    <button onClick={() => setIsChatOpen(!isChatOpen)} className="fixed bottom-6 right-6 z-[1002] bg-blue-600 text-white p-4 rounded-full shadow-lg hover:bg-blue-700 transition flex items-center justify-center hover:scale-105">
+                    {/* Chat Button with Notification Badge */}
+                    <button 
+                        onClick={toggleChat} 
+                        className="fixed bottom-6 right-6 z-[1002] bg-blue-600 text-white p-4 rounded-full shadow-lg hover:bg-blue-700 transition flex items-center justify-center hover:scale-105"
+                    >
                         <BsChatDotsFill className="text-xl" />
+                        
+                        {unreadCount > 0 && (
+                            <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold w-6 h-6 flex items-center justify-center rounded-full border-2 border-white animate-bounce">
+                                {unreadCount}
+                            </span>
+                        )}
                     </button>
 
                     <ChatWindow roomId={roomId} userName={userName} isOpen={isChatOpen} onClose={() => setIsChatOpen(false)} />
