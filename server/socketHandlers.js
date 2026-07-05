@@ -19,7 +19,7 @@ let roomUsers={};
 
 
 
-//to solve the flaky socket problem:We need to map socket.id to clientId on the server. When a socket drops, we wait 15 seconds before deleting the user. If they reconnect with the same clientId, we clear the timer and resume silently.
+//to solve the flaky socket problem:We need to map socket.id to clientId on the server. When a socket drops, we wait 10 seconds before deleting the user. If they reconnect with the same clientId, we clear the timer and resume silently.
 // Store active disconnect timers
 const disconnectTimers = {};
 // Map physical socket.id to persistent clientId
@@ -120,25 +120,25 @@ const handleSocketConnection=(socket,io)=>{//Jab bhi koi naya client connect hot
 
 
     socket.on('locationUpdate', async (data) => {
+        // 1. Get the roomId and clientId from our map instead of the socket object!
         const mapInfo = socketToClientMap[socket.id];
         if (!mapInfo) return;
 
         const {roomId,clientId}=mapInfo
         const { lat, lng, mode } = data; 
 
-        if (!roomUsers[roomId] || !roomUsers[roomId][socket.id]) return;
+        // 2. Ensure the user exists in the room using clientId
+        if (!roomUsers[roomId] || !roomUsers[roomId][clientId]) return;
 
-        // 1. Update the specific user's location
-        roomUsers[roomId][clientId].lat = lat;
-        roomUsers[roomId][clientId].lng = lng;
-        roomUsers[roomId][clientId].mode = mode; // Update mode dynamically
+        // 3. Update the specific user's location
+        roomUsers[roomId][clientId].lat = lat;
+        roomUsers[roomId][clientId].lng = lng;
+        roomUsers[roomId][clientId].mode = mode;
 
         const me = roomUsers[roomId][clientId];
         
-        // 2. Build the response object (Keep keys as Socket IDs!)
         const usersObj = {};
         const promises = Object.keys(roomUsers[roomId]).map(async (id) => {
-            // *** FIX: Skip destination key here too ***
             if (id === 'destination') return;
 
             const user = roomUsers[roomId][id];
@@ -157,42 +157,39 @@ const handleSocketConnection=(socket,io)=>{//Jab bhi koi naya client connect hot
                 eta: null,
             };
 
-            // 3. Calculate Distance (Only if both have location)
-            if (me.lat && me.lng && user.lat && user.lng && id !== clientId) {
-                try {
-                    // FORCE 'driving-car' if the mathematical distance is huge to prevent ORS errors
-                    // or just use the user's mode. 
-                    // For stability, let's use the user's mode but fallback safely.
-                    const result = await calculateDistanceAndETA(
-                        { lat: user.lat, lng: user.lng },
-                        { lat: me.lat, lng: me.lng },
-                        user.mode 
-                    );
-                    usersObj[id].distance = result.distance;
-                    usersObj[id].eta = result.duration;
-                } catch (err) {
-                    console.log(`ORS Error for ${user.name}:`, err.message);
-                    usersObj[id].distance = "Far"; // Indicate they are far/unreachable
-                    usersObj[id].eta = "-";
-                }
-            }
-        });
+            // 4. Calculate Distance (Use clientId instead of socket.id here too)
+            if (me.lat && me.lng && user.lat && user.lng && id !== clientId) {
+                try {
+                    const result = await calculateDistanceAndETA(
+                        { lat: user.lat, lng: user.lng },
+                        { lat: me.lat, lng: me.lng },
+                        user.mode 
+                    );
+                    usersObj[id].distance = result.distance;
+                    usersObj[id].eta = result.duration;
+                } catch (err) {
+                    usersObj[id].distance = "Far"; 
+                    usersObj[id].eta = "-";
+                }
+            }
+        });
 
         await Promise.all(promises);
         io.to(roomId).emit('locationUpdate', usersObj);
     });
 
     socket.on('disconnect', () => {
+        // Use the map to find who disconnected
         const mapInfo = socketToClientMap[socket.id];
         if (!mapInfo) return;
         
         const { roomId, clientId } = mapInfo;
-        delete socketToClientMap[socket.id]; // Clean up the map
+        delete socketToClientMap[socket.id]; // Clean up the physical socket map
 
         if (roomId && roomUsers[roomId] && roomUsers[roomId][clientId]) {
             const name = roomUsers[roomId][clientId].name || "Someone";
 
-            // START THE 15-SECOND GRACE PERIOD
+            // START THE 10-SECOND GRACE PERIOD
             disconnectTimers[clientId] = setTimeout(() => {
                 delete roomUsers[roomId][clientId];
                 const usersObj = buildUsersObject(roomId);
@@ -212,7 +209,7 @@ const handleSocketConnection=(socket,io)=>{//Jab bhi koi naya client connect hot
                 }
                 
                 delete disconnectTimers[clientId]; // Cleanup timer
-            }, 15000); // 15 seconds
+            }, 10000); // 10 seconds
         }
     });
 

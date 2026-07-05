@@ -35,6 +35,9 @@ const RoomPage = ({ userName, travelMode }) => {
     // State Variables
     const [users, setusers] = useState({});
     const [selectedUser, setSelectedUser] = useState(null);
+
+    const clientId = sessionStorage.getItem('routeShare_clientId')
+
     const [roomId, setRoomId] = useState(getRoomIdfromURL() || "");
     const [copied, setCopied] = useState(false);
     const [windowWidth, setWindowWidth] = useState(window.innerWidth);
@@ -83,8 +86,10 @@ const RoomPage = ({ userName, travelMode }) => {
         
         //solving flaky socket problem
         //Grab the persistent Id and pass it 
-        const clientId = localStorage.getItem('routeShare_clientId');
-        joinRoom(currentRoomId, userName, travelMode,clientId);
+
+       // Change localStorage to sessionStorage
+        // const clientId = sessionStorage.getItem('routeShare_clientId');
+        joinRoom(currentRoomId, userName, travelMode, clientId);
 
         // --- Notification Listener ---
         // Listens for messages to play sound and update badge if chat is closed
@@ -256,7 +261,7 @@ const RoomPage = ({ userName, travelMode }) => {
     // Build user object for Map
     const usersWithMe = {
         ...users,
-        ...(myLocation ? { [socket.id]: { ...users[socket.id], lat: myLocation.lat, lng: myLocation.lng, userId: socket.id, name: userName || "Me", heading: heading } } : {})
+        ...(myLocation ? { [clientId]: { ...users[clientId], lat: myLocation.lat, lng: myLocation.lng, userId: clientId, name: userName || "Me", heading: heading } } : {})
     };
 
     const roomUrl = `${window.location.origin}/room/${encodeURIComponent(roomId)}`;
@@ -301,7 +306,7 @@ const RoomPage = ({ userName, travelMode }) => {
                         isOpen={isSidebarOpen}
                         setIsOpen={setIsSidebarOpen}
                         windowWidth={windowWidth}
-                        mySocketId={socket.id}
+                        myClientId={clientId} // FIX: Pass clientId instead of socket.id
                     />
                 )}
 

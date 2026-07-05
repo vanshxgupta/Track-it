@@ -32,12 +32,13 @@ function App() {
 
         //to fix this :
         //i) // Generate and store a persistent client ID if one doesn't exist
-        if(!localStorage.getItem('routeShare_clientId')){
-            localStorage.setItem('routeShare_clientId',crypto.randomUUID());
+        // FIX: Use sessionStorage instead of localStorage so tabs don't overwrite each other!
+        if (!sessionStorage.getItem('routeShare_clientId')) {
+            sessionStorage.setItem('routeShare_clientId', crypto.randomUUID());
         }
 
         //ii)pass the client id to socket(frontend -> in client/src/socket.js && client/src/pages/RoomPage.jsx)
-        //iii)implement the 15-second limbo(backed -> in server/socketHandlers.js)
+        //iii)implement the 10-second limbo(backed -> in server/socketHandlers.js)
 
         setHasRegistered(true);
     };

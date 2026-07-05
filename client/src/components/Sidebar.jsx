@@ -1,10 +1,10 @@
 import React from 'react';
 import UserCard from './UserCard';
 
-const Sidebar = ({ users, onSelectUser, selectedUserId, isOpen, setIsOpen, windowWidth, mySocketId }) => {
+const Sidebar = ({ users, onSelectUser, selectedUserId, isOpen, setIsOpen, windowWidth, myClientId }) => {
     // User selection closes sidebar on mobile
     const handleUserSelect = (user) => {
-        if (user.userId !== mySocketId) { // Prevent selecting yourself
+        if (user.userId !== myClientId) { // FIX: Use myClientId
             onSelectUser(user);
             if (windowWidth < 768) setIsOpen(false);
         }
@@ -15,6 +15,16 @@ const Sidebar = ({ users, onSelectUser, selectedUserId, isOpen, setIsOpen, windo
 
     // Convert users object to array
     const usersArray = Object.values(users || {});
+
+    // 1. Get the total number of active users
+    const totalActiveUsers = usersArray.length;
+
+    // 2. Sort the array so the current user (You) is ALWAYS at the top
+    const sortedUsers = [...usersArray].sort((a, b) => {
+        if (a.userId === myClientId) return -1;
+        if (b.userId === myClientId) return 1;
+        return 0; // Keep everyone else in their natural order
+    });
 
     return (
         <>
@@ -32,8 +42,12 @@ const Sidebar = ({ users, onSelectUser, selectedUserId, isOpen, setIsOpen, windo
             >
                 {/* Header with close button on mobile */}
                 <div className="flex justify-between items-center mb-6">
-                    <h2 className="text-2xl font-extrabold bg-gradient-to-r from-green-600 to-blue-600 bg-clip-text text-transparent drop-shadow-sm">
-                        Active Users
+                    {/* 3. Display the total number of users next to the title */}
+                    <h2 className="text-2xl font-extrabold flex items-center gap-2 bg-gradient-to-r from-green-600 to-blue-600 bg-clip-text text-transparent drop-shadow-sm">
+                        Active Users 
+                        <span className="text-sm bg-blue-100 text-blue-800 px-3 py-1 rounded-full font-bold shadow-inner">
+                            {totalActiveUsers}
+                        </span>
                     </h2>
                     {windowWidth < 768 && (
                         <button
@@ -50,26 +64,30 @@ const Sidebar = ({ users, onSelectUser, selectedUserId, isOpen, setIsOpen, windo
 
                 {/* User list */}
                 <div className="flex-1 overflow-y-auto space-y-4 pr-1 custom-scrollbar">
-                    {usersArray.map((user, idx) => (
-                        <div
-
-                            key={user.userId || idx} // safe key
-                            onClick={() => handleUserSelect(user)}
-                            className={`
-                                ${user.userId === mySocketId ? "hidden" : ""} 
-                                ${selectedUserId === user.userId
-                                    ? "bg-gradient-to-r from-green-100 to-blue-100 ring-2 ring-green-600 scale-[1.02]"
-                                    : "hover:bg-white hover:shadow-lg"}
-                                rounded-2xl transition-all duration-200 shadow-sm cursor-pointer
-                            `}
-                        >
-
-                            <UserCard //everything , the name, mode.... will come from user.name , user.mode.....itself , no need to pass unneccessary props
-                                user={user}
-                            />
-                            
-                        </div>
-                    ))}
+                    {/* 4. Map over the sorted array instead of the raw array */}
+                    {sortedUsers.map((user, idx) => {
+                        const isMe = user.userId === myClientId;
+                        
+                        return (
+                            <div
+                                key={user.userId || idx} 
+                                onClick={() => handleUserSelect(user)}
+                                className={`
+                                    ${selectedUserId === user.userId
+                                        ? "bg-gradient-to-r from-green-100 to-blue-100 ring-2 ring-green-600 scale-[1.02]"
+                                        : isMe
+                                            ? "bg-blue-50 border-2 border-blue-400 shadow-md cursor-default" // Special styling for your own card
+                                            : "hover:bg-white hover:shadow-lg cursor-pointer"} // Standard styling for others
+                                    rounded-2xl transition-all duration-200 shadow-sm
+                                `}
+                            >
+                                {/* 5. Dynamically append "(You)" to your own name without altering the backend data */}
+                                <UserCard 
+                                    user={{ ...user, name: isMe ? `${user.name} (You)` : user.name }} 
+                                />
+                            </div>
+                        );
+                    })}
                 </div>
             </div>
 
