@@ -18,6 +18,14 @@ let roomUsers={};
 // Har user ke liye yeh details store hoti hain: name, latitude, longitude, aur travel mode.
 
 
+
+//to solve the flaky socket problem:We need to map socket.id to clientId on the server. When a socket drops, we wait 15 seconds before deleting the user. If they reconnect with the same clientId, we clear the timer and resume silently.
+// Store active disconnect timers
+const disconnectTimers = {};
+// Map physical socket.id to persistent clientId
+const socketToClientMap = {};
+
+
 // Helper function: convert roomUsers[roomId] into consistent object for frontend
 function buildUsersObject(roomId) {
     const usersObj = {};
@@ -32,7 +40,7 @@ function buildUsersObject(roomId) {
         if (!u) return;
 
         usersObj[id] = {
-            userId: id,
+            userId: id, // this is now the persistent clientId
             name: u.name || "No Username",
             lat: u.lat ?? null,
             lng: u.lng ?? null,
@@ -60,27 +68,43 @@ const handleSocketConnection=(socket,io)=>{//Jab bhi koi naya client connect hot
 
     console.log('A user connected:',socket?.id);
 
-    socket.on('joinRoom',({roomId,name,mode})=>{
+    socket.on('joinRoom',({roomId,name,mode,clientId})=>{
         socket.join(roomId); // is user ko ek specific room me daal diya
-        socket.roomId=roomId; //set the roomId on the socket object for later use
+
+        // Map the volatile socket.id to the persistent room and clientId
+        socketToClientMap[socket.id] = { roomId, clientId };
         
         if(!roomUsers[roomId]){
             roomUsers[roomId]={}; //if room doesn't exist , create a empty object
             roomUsers[roomId].destination = null;// Initialize destination
         }
-        // room ke andar user ko add kar diya, name bhi save kar liya
+
+
+        // 1. RECONNECTION LOGIC: If user is in limbo, cancel the disconnect!
+        if (disconnectTimers[clientId]) {
+            clearTimeout(disconnectTimers[clientId]);
+            delete disconnectTimers[clientId];
+            
+            // Update their physical socket reference and silently return
+            roomUsers[roomId][clientId].socketId = socket.id;
+            return; 
+        }
+
+
+        // 2. NEW CONNECTION LOGIC
         const userName = name || "Vansh";
-        roomUsers[roomId][socket.id] = { 
-            name: userName, 
-            mode: mode || "car",   
-            lat: null, 
-            lng: null 
-        };
+        roomUsers[roomId][clientId] = { 
+            socketId: socket.id,
+            name: userName, 
+            mode: mode || "car",   
+            lat: null, 
+            lng: null 
+        };
 
         // update sabko
         io.to(roomId).emit('locationUpdate', buildUsersObject(roomId));
 
-        // 🚀 ADDED: Notify others that user connected (System Message)
+        //  ADDED: Notify others that user connected (System Message)
         socket.to(roomId).emit("receiveMessage", {
             roomId,
             author: "System",
@@ -94,20 +118,22 @@ const handleSocketConnection=(socket,io)=>{//Jab bhi koi naya client connect hot
         }
     });
 
-    // In server/socketHandlers.js
 
     socket.on('locationUpdate', async (data) => {
-        const { lat, lng, mode } = data; // We don't need username here, we already have it in roomUsers
-        const roomId = socket.roomId;
+        const mapInfo = socketToClientMap[socket.id];
+        if (!mapInfo) return;
 
-        if (!roomId || !roomUsers[roomId] || !roomUsers[roomId][socket.id]) return;
+        const {roomId,clientId}=mapInfo
+        const { lat, lng, mode } = data; 
+
+        if (!roomUsers[roomId] || !roomUsers[roomId][socket.id]) return;
 
         // 1. Update the specific user's location
-        roomUsers[roomId][socket.id].lat = lat;
-        roomUsers[roomId][socket.id].lng = lng;
-        roomUsers[roomId][socket.id].mode = mode; // Update mode dynamically
+        roomUsers[roomId][clientId].lat = lat;
+        roomUsers[roomId][clientId].lng = lng;
+        roomUsers[roomId][clientId].mode = mode; // Update mode dynamically
 
-        const me = roomUsers[roomId][socket.id];
+        const me = roomUsers[roomId][clientId];
         
         // 2. Build the response object (Keep keys as Socket IDs!)
         const usersObj = {};
@@ -132,7 +158,7 @@ const handleSocketConnection=(socket,io)=>{//Jab bhi koi naya client connect hot
             };
 
             // 3. Calculate Distance (Only if both have location)
-            if (me.lat && me.lng && user.lat && user.lng && id !== socket.id) {
+            if (me.lat && me.lng && user.lat && user.lng && id !== clientId) {
                 try {
                     // FORCE 'driving-car' if the mathematical distance is huge to prevent ORS errors
                     // or just use the user's mode. 
@@ -157,42 +183,44 @@ const handleSocketConnection=(socket,io)=>{//Jab bhi koi naya client connect hot
     });
 
     socket.on('disconnect', () => {
-        const roomId = socket.roomId; // Get the room the socket was part of
+        const mapInfo = socketToClientMap[socket.id];
+        if (!mapInfo) return;
+        
+        const { roomId, clientId } = mapInfo;
+        delete socketToClientMap[socket.id]; // Clean up the map
 
-        // If the room exists and has users
-        if (roomId && roomUsers[roomId]) {
-            // 🚀 ADDED: Get user name before deleting to notify others
-            const name = roomUsers[roomId][socket.id]?.name || "Someone";
+        if (roomId && roomUsers[roomId] && roomUsers[roomId][clientId]) {
+            const name = roomUsers[roomId][clientId].name || "Someone";
 
-            // Remove the disconnected user from the room
-            delete roomUsers[roomId][socket.id];
+            // START THE 15-SECOND GRACE PERIOD
+            disconnectTimers[clientId] = setTimeout(() => {
+                delete roomUsers[roomId][clientId];
+                const usersObj = buildUsersObject(roomId);
 
-            // Prepare updated list of active users in the room
-            const usersObj = buildUsersObject(roomId);
+                io.to(roomId).emit("receiveMessage", {
+                    roomId,
+                    author: "System",
+                    message: `${name} has left the room.`,
+                    time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                });
 
-            // 🚀 ADDED: Notify room about disconnection (System Message)
-            io.to(roomId).emit("receiveMessage", {
-                roomId,
-                author: "System",
-                message: `${name} has left the room.`,
-                time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-            });
+                io.to(roomId).emit('user-offline', usersObj);
 
-            // Notify all users in the room that someone went offline
-            io.to(roomId).emit('user-offline', usersObj);
-
-            // If no users left in the room, clean up the room entry
-            const keys = Object.keys(roomUsers[roomId]);
-            // Check if room is empty OR only contains 'destination' key
-            if (keys.length === 0 || (keys.length === 1 && keys[0] === 'destination')) {
-                delete roomUsers[roomId];
-            }
-        }
-    });
+                const keys = Object.keys(roomUsers[roomId]);
+                if (keys.length === 0 || (keys.length === 1 && keys[0] === 'destination')) {
+                    delete roomUsers[roomId];
+                }
+                
+                delete disconnectTimers[clientId]; // Cleanup timer
+            }, 15000); // 15 seconds
+        }
+    });
 
     //set destinnation
     socket.on('setDestination', (coords) => {
-        const roomId = socket.roomId;
+        const mapInfo = socketToClientMap[socket.id];
+        if (!mapInfo) return;
+        const roomId = mapInfo.roomId;
         if (roomId && roomUsers[roomId]) {
             // Store destination in the room object (but outside the user list logic if possible, 
             // or just attach it to the roomUsers object if you want to keep it simple)

@@ -24,6 +24,21 @@ function App() {
     const handleRegistration = (name, mode) => {
         setUserName(name);
         setTravelMode(mode);
+        
+
+        //flaky socket problem
+        //i.e when a mobile user hits a dead zone for even one second, the TCP connection drops.When they reconnect, Socket.IO assigns them a brand new socket.id .
+        // Because your backend uses socket.id as the primary key in roomUsers, it thinks a completely new person joined and the old one left.
+
+        //to fix this :
+        //i) // Generate and store a persistent client ID if one doesn't exist
+        if(!localStorage.getItem('routeShare_clientId')){
+            localStorage.setItem('routeShare_clientId',crypto.randomUUID());
+        }
+
+        //ii)pass the client id to socket(frontend -> in client/src/socket.js && client/src/pages/RoomPage.jsx)
+        //iii)implement the 15-second limbo(backed -> in server/socketHandlers.js)
+
         setHasRegistered(true);
     };
 

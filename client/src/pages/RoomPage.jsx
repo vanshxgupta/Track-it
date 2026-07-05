@@ -51,6 +51,10 @@ const RoomPage = ({ userName, travelMode }) => {
     
     // Chat & Notification State
     const [isChatOpen, setIsChatOpen] = useState(false);
+
+    // ADD THIS: A ref to track chat state without causing re-renders
+    const isChatOpenRef = useRef(isChatOpen);
+
     const [unreadCount, setUnreadCount] = useState(0); 
     const notificationSound = useRef(new Audio('/notification.mp3'));
 
@@ -66,16 +70,26 @@ const RoomPage = ({ userName, travelMode }) => {
     const lastFetchedCoords = useRef({ start: { lat: 0, lng: 0 }, end: { lat: 0, lng: 0 } });
     const isInitialRouteFetch = useRef(true);
 
+
+    // ADD THIS: Keep the ref updated whenever the state changes
+    useEffect(() => {
+        isChatOpenRef.current = isChatOpen;
+    }, [isChatOpen]);
+
     useEffect(() => {
         const currentRoomId = getRoomIdfromURL();
         if (!currentRoomId) return;
         setRoomId(currentRoomId);
-        joinRoom(currentRoomId, userName, travelMode);
+        
+        //solving flaky socket problem
+        //Grab the persistent Id and pass it 
+        const clientId = localStorage.getItem('routeShare_clientId');
+        joinRoom(currentRoomId, userName, travelMode,clientId);
 
         // --- Notification Listener ---
         // Listens for messages to play sound and update badge if chat is closed
         const handleNotification = (data) => {
-            if (!isChatOpen && data.author !== userName) {
+            if (!isChatOpenRef.current && data.author !== userName) {
                 setUnreadCount(prev => prev + 1);
                 
                 try {
@@ -163,9 +177,9 @@ const RoomPage = ({ userName, travelMode }) => {
         return () => {
             socket.off("receiveMessage", handleNotification);
             window.removeEventListener('deviceorientation', handleOrientation);
-            navigator.geolocation.clearWatch(watchId);
+            // navigator.geolocation.clearWatch(watchId);
         };
-    }, [userName, travelMode, isChatOpen]);
+    }, [userName, travelMode]);
 
     // Handle Chat Toggle
     const toggleChat = () => {

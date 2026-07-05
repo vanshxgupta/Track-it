@@ -5,10 +5,10 @@ const socket = io(SERVER_URL, { transports: ["websocket", "polling"] });
 
  //frontend socket connection with backend server.io
 
-export const joinRoom = (roomId, name, mode) => {
+export const joinRoom = (roomId, name, mode,clientId) => {//pass the clientId also to solve flaky socket problem-1) 
     //Frontend se backend ko event bhej rahe ho (joinRoom), taki user ek particular room me join ho jaye.
     //Ab name bhi pass karenge taki backend user ka naam store kar sake.
-    socket.emit('joinRoom', { roomId, name, mode });
+    socket.emit('joinRoom', { roomId, name, mode ,clientId});
 }
 
 export const emitLocationUpdate = (data) => {
