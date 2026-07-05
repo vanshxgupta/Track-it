@@ -195,7 +195,8 @@ const RoomPage = ({ userName, travelMode }) => {
     // --- Route Fetching Logic (User to User) ---
     useEffect(() => {
         const fetchRoute = async () => {
-            const me = users[socket.id];
+            // FIX: Use clientId instead of socket.id
+            const me = users[clientId]; 
             if (!selectedUser || !me || typeof me.lat !== 'number') {
                 if (!selectedUser) setRoute(null);
                 return;
@@ -233,7 +234,8 @@ const RoomPage = ({ userName, travelMode }) => {
     // --- Destination Route Logic ---
     useEffect(() => {
         const fetchDestRoute = async () => {
-            const me = users[socket.id];
+            // FIX: Use clientId instead of socket.id
+            const me = users[clientId]; 
             if (!destination || !me || typeof me.lat !== 'number') return;
             try {
                 const API_BASE = import.meta.env.VITE_SERVER_URL || "http://localhost:4000";
@@ -261,6 +263,7 @@ const RoomPage = ({ userName, travelMode }) => {
     // Build user object for Map
     const usersWithMe = {
         ...users,
+        // FIX: Replace all three instances of socket.id with clientId below
         ...(myLocation ? { [clientId]: { ...users[clientId], lat: myLocation.lat, lng: myLocation.lng, userId: clientId, name: userName || "Me", heading: heading } } : {})
     };
 
@@ -336,7 +339,8 @@ const RoomPage = ({ userName, travelMode }) => {
                     
                     <Map
                         users={usersWithMe}
-                        mySocketId={socket.id}
+                        // FIX: Pass clientId instead of socket.id
+                        mySocketId={clientId}
                         route={route} 
                         destRoute={destRoute}
                         destStats={destStats}

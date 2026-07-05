@@ -178,7 +178,7 @@ const handleSocketConnection=(socket,io)=>{//Jab bhi koi naya client connect hot
         io.to(roomId).emit('locationUpdate', usersObj);
     });
 
-    socket.on('disconnect', () => {
+   socket.on('disconnect', () => {
         // Use the map to find who disconnected
         const mapInfo = socketToClientMap[socket.id];
         if (!mapInfo) return;
@@ -189,23 +189,29 @@ const handleSocketConnection=(socket,io)=>{//Jab bhi koi naya client connect hot
         if (roomId && roomUsers[roomId] && roomUsers[roomId][clientId]) {
             const name = roomUsers[roomId][clientId].name || "Someone";
 
-            // START THE 10-SECOND GRACE PERIOD
+            // START THE 15-SECOND GRACE PERIOD
             disconnectTimers[clientId] = setTimeout(() => {
-                delete roomUsers[roomId][clientId];
-                const usersObj = buildUsersObject(roomId);
+                
+                // FIX: Verify the room and user still exist before doing anything!
+                if (roomUsers[roomId] && roomUsers[roomId][clientId]) {
+                    
+                    delete roomUsers[roomId][clientId];
+                    const usersObj = buildUsersObject(roomId);
 
-                io.to(roomId).emit("receiveMessage", {
-                    roomId,
-                    author: "System",
-                    message: `${name} has left the room.`,
-                    time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-                });
+                    io.to(roomId).emit("receiveMessage", {
+                        roomId,
+                        author: "System",
+                        message: `${name} has left the room.`,
+                        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                    });
 
-                io.to(roomId).emit('user-offline', usersObj);
+                    io.to(roomId).emit('user-offline', usersObj);
 
-                const keys = Object.keys(roomUsers[roomId]);
-                if (keys.length === 0 || (keys.length === 1 && keys[0] === 'destination')) {
-                    delete roomUsers[roomId];
+                    // Check if room is empty and needs to be deleted
+                    const keys = Object.keys(roomUsers[roomId]);
+                    if (keys.length === 0 || (keys.length === 1 && keys[0] === 'destination')) {
+                        delete roomUsers[roomId];
+                    }
                 }
                 
                 delete disconnectTimers[clientId]; // Cleanup timer
